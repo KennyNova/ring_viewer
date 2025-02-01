@@ -9,13 +9,14 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@react-three/drei": "9.88.0",
-    "@react-three/fiber": "8.13.0",
+    "@react-three/drei": "^9.121.4",
+    "@react-three/fiber": "^8.17.14",
     "@react-three/postprocessing": "^2.19.1",
     "next": "14.0.4",
+    "postprocessing": "^6.36.6",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "three": "^0.153.0"
+    "three": "^0.173.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
