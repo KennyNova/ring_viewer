@@ -17,35 +17,32 @@ import { RGBELoader } from "three-stdlib";
 
 function Diamond(props: any) {
   const ref = useRef<THREE.Mesh>(null);
-  const texture = useLoader(RGBELoader, "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/aerodynamics_workshop_1k.hdr");
+  const { scene } = useThree();
   
-  // Optional controls for tweaking material properties via leva
-  const config = useControls({
+  const config = useControls('Diamond', {
     bounces: { value: 3, min: 0, max: 8, step: 1 },
     aberrationStrength: { value: 0.01, min: 0, max: 0.1, step: 0.01 },
     ior: { value: 2.75, min: 0, max: 10 },
     fresnel: { value: 1, min: 0, max: 1 },
-    color: "white"
+    color: "white",
+    transmission: { value: 1, min: 0, max: 1 },
+    thickness: { value: 0.5, min: 0, max: 2 },
+    roughness: { value: 0, min: 0, max: 1 },
+    clearcoat: { value: 0.1, min: 0, max: 1 },
+    clearcoatRoughness: { value: 0.1, min: 0, max: 1 },
+    attenuationDistance: { value: 1, min: 0, max: 10 },
+    attenuationColor: "#ffffff"
   });
 
   return (
-    <CubeCamera resolution={256} frames={1} envMap={texture}>
-      {(envMap) => (
-        // <Caustics
-        //   color={config.color}
-        //   position={props.position}
-        //   lightSource={[5, 5, -10]}
-        //   worldRadius={0.1}
-        //   ior={1.8}
-        //   intensity={0.1}
-        //   backside
-        //   causticsOnly
-        // >
+    <group>
+      <CubeCamera resolution={256} frames={1}>
+        {(envMap) => (
           <mesh
             ref={ref}
             castShadow
             geometry={props.geometry}
-            position={[0, 0, 0]}
+            position={props.position}
             rotation={props.rotation}
             scale={props.scale}
           >
@@ -53,12 +50,11 @@ function Diamond(props: any) {
               envMap={envMap} 
               {...config} 
               toneMapped={false}
-              // thickness={1.5}
             />
           </mesh>
-        // </Caustics>
-      )}
-    </CubeCamera>
+        )}
+      </CubeCamera>
+    </group>
   );
 }
 
@@ -70,14 +66,25 @@ function RingModel() {
   };
   const ringRef = useRef<THREE.Group>(null!);
 
+  const bandMaterials = {
+    'Yellow Gold': { color: '#FFD700', metalness: 1, roughness: 0.2 },
+    'Rose Gold': { color: '#B76E79', metalness: 1, roughness: 0.2 },
+    'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
+    'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
+  };
+
+  const bandConfig = useControls('Band', {
+    material: {
+      options: Object.keys(bandMaterials)
+    }
+  });
+
   if (!nodes) return null;
 
-  // Find the band (the mesh with COLOR in its name)
   const bandNode = Object.values(nodes).find(
     node => node instanceof THREE.Mesh && node.name.includes('COLOR')
   ) as THREE.Mesh;
 
-  // Find all diamond parts (meshes starting with PART0001)
   const gemNodes = Object.values(nodes).filter(
     node => node instanceof THREE.Mesh && node.name.startsWith('PART0001')
   ) as THREE.Mesh[];
@@ -87,14 +94,14 @@ function RingModel() {
     return null;
   }
 
+  const selectedMaterial = bandMaterials[bandConfig.material as keyof typeof bandMaterials];
+
   return (
     <group ref={ringRef}>
-      {/* Band material */}
       <mesh geometry={bandNode.geometry}>
-        <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
+        <meshStandardMaterial {...selectedMaterial} />
       </mesh>
       
-      {/* Gems */}
       {gemNodes.map((gem, index) => (
         <Diamond
           key={index}
@@ -115,7 +122,7 @@ export default function RingViewer() {
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={2} shadow-mapSize={2048} />
         
-        <Environment files="/studio.exr"  />
+        <Environment files="/studio.exr" background />
 
         <Suspense fallback={null}>
           <RingModel />
