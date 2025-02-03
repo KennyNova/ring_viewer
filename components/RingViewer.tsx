@@ -9,7 +9,8 @@ import {
   useGLTF,
   CubeCamera,
   Caustics,
-  MeshRefractionMaterial
+  MeshRefractionMaterial,
+  
 } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useControls } from "leva";
@@ -25,7 +26,7 @@ function Diamond(props: any) {
     ior: { value: 2.75, min: 0, max: 10 },
     fresnel: { value: 1, min: 0, max: 1 },
     color: "white",
-    transmission: { value: 1, min: 0, max: 1 },
+    transmission: { value: 0, min: 0, max: 1 },
     thickness: { value: 0.5, min: 0, max: 2 },
     roughness: { value: 0, min: 0, max: 1 },
     clearcoat: { value: 0.1, min: 0, max: 1 },
@@ -97,7 +98,7 @@ function RingModel() {
   const selectedMaterial = bandMaterials[bandConfig.material as keyof typeof bandMaterials];
 
   return (
-    <group ref={ringRef}>
+    <group ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh geometry={bandNode.geometry}>
         <meshStandardMaterial {...selectedMaterial} />
       </mesh>
@@ -118,7 +119,7 @@ function RingModel() {
 export default function RingViewer() {
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
-      <Canvas camera={{ position: [0, 0, 2], fov: 50 }}>
+      <Canvas camera={{ position: [0, -2, 0], fov: 50 }}>
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={2} shadow-mapSize={2048} />
         
@@ -131,7 +132,8 @@ export default function RingViewer() {
           </EffectComposer>
         </Suspense>
 
-        <OrbitControls enablePan={false} minDistance={15} maxDistance={50}  />
+        <axesHelper args={[5]} />
+        <OrbitControls enablePan={false} minDistance={15} maxDistance={50} />
       </Canvas>
     </div>
   );
