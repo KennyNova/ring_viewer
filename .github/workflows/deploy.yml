@@ -1,0 +1,36 @@
+name: Deploy Project
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          node-version: 20
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Build project
+        run: npm run build
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github-actions
+          chmod 600 ~/.ssh/github-actions
+          echo "Host ${{ secrets.SERVER_TAILSCALE_IP }}" >> ~/.ssh/config
+          echo "  User ${{ secrets.SSH_USERNAME }}" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/github-actions" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+      - name: Deploy using SCP
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r ./dist/* ${{ secrets.SSH_USERNAME }}@${{ secrets.SERVER_TAILSCALE_IP }}:~/node-app
+      - name: Deploy via SSH
+        run: scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r ${{ secrets.SSH_USERNAME }}@${{ secrets.SERVER_TAILSCALE_IP }} "cd ~/node-app && npm install && pm2 restart customerSync"

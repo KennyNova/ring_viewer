@@ -74,7 +74,7 @@ export function PerformanceMonitor({
   // New ref to track the last time we adjusted the quality factor
   const lastUpdateTime = useRef(performance.now());
   // Define a cooldown period (in ms) between adjustments
-  const cooldown = 1000;
+  const cooldown = 500;
 
   useFrame((state, delta) => {
     frames.current.push(1 / delta);
@@ -230,6 +230,7 @@ function Diamond(props: any) {
           toneMapped={false}
           // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
           blur={adjustedBlur}
+          flatShading={perfFactor < 0.7} // Enable jagged (flat) shading when performance is low
         />
       </mesh>
     </group>
@@ -340,8 +341,8 @@ export default function RingViewer() {
   // Scale quality based on performance factor
   const quality = {
     dpr: factor < 0.5 ? 1 : ([1, 2] as [number, number]),
-    shadowMapSize: factor < 0.5 ? 1024 : 2048,
-    envMapResolution: factor < 0.5 ? 128 : 256,
+    shadowMapSize: factor < 0.5 ? 4 : 8,
+    envMapResolution: factor < 0.5 ? 8 : 6,
     bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
 
@@ -349,7 +350,7 @@ export default function RingViewer() {
     <div style={{ width: "100vw", height: "100vh" }}>
       <Canvas 
         dpr={quality.dpr}
-        camera={{ position: [0, -2, 0], fov: 50 }}
+        camera={{ position: [0, 0, 20], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}  // Force lower precision on Safari to avoid shader errors
         onCreated={(state) => {
           const { gl } = state;
@@ -370,12 +371,12 @@ export default function RingViewer() {
           }
         }}
       >
-        <ambientLight intensity={0.15} />
-        <directionalLight 
+        {/* <ambientLight intensity={15} /> */}
+        {/* <directionalLight 
           position={[5, 5, 5]} 
-          intensity={0.8} 
+          intensity={10} 
           shadow-mapSize={quality.shadowMapSize}
-        />
+        /> */}
         
         <Environment files="/studio.exr" background />
 
@@ -401,7 +402,7 @@ export default function RingViewer() {
         </Suspense>
 
         {!isMobile && <axesHelper args={[5]} />}
-        <OrbitControls enablePan={false} minDistance={15} maxDistance={50} />
+        <OrbitControls enablePan={false} minDistance={15} maxDistance={50} minPolarAngle={Math.PI / 3.4} />
         
         <Stats />
 
