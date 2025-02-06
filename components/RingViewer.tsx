@@ -11,12 +11,15 @@ import {
   CubeCamera,
   Caustics,
   MeshRefractionMaterial,
-  Stats
+  Stats,
+  useProgress,
+  Html
 } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useControls } from "leva";
 import { RGBELoader } from "three-stdlib";
 import React, { createContext, useContext, useState } from 'react';
+import { Leva } from "leva";
 
 const DiamondEnvMapContext = createContext<THREE.Texture | null>(null);
 
@@ -183,6 +186,19 @@ export function useDiamondEnvMap() {
   return useContext(DiamondEnvMapContext);
 }
 
+// Loader component to display a loading screen with a progress bar
+function Loader() {
+  const { progress } = useProgress();
+  return (
+    <Html center>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'white', fontSize: '1.5em' }}>
+        <div>{progress.toFixed(0)}% loaded</div>
+        <progress value={progress} max="100" style={{ width: '200px' }} />
+      </div>
+    </Html>
+  );
+}
+
 function Diamond(props: any) {
   const ref = useRef<THREE.Mesh>(null);
   const { scene } = useThree();
@@ -245,8 +261,8 @@ function extractMeshes(node: THREE.Object3D, meshes: THREE.Mesh[] = []): THREE.M
   return meshes;
 }
 
-function RingModel() {
-  const { nodes } = useGLTF("/ring.glb") as unknown as {
+function RingModel({ modelPath }: { modelPath: string }) {
+  const { nodes } = useGLTF(modelPath) as unknown as {
     nodes: {
       [key: string]: THREE.Mesh | THREE.Object3D;
     }
@@ -346,12 +362,50 @@ export default function RingViewer() {
     bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
 
+  // State for available models and selected model
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+
+  // Add Leva control for model selection in its own folder in the Leva panel
+  const controlValues = useControls("Model Selection", {
+    selectedModel: {
+      value: selectedModel,
+      onChange: setSelectedModel,
+      options: models.reduce(
+        (acc, m) => ({ ...acc, [m]: m }),
+        {} as Record<string, string>
+      )
+    }
+  }, [models]);
+
+  useEffect(() => {
+    fetch('/api/models')
+      .then(res => res.json())
+      .then(data => {
+        setModels(data.files);
+        if(data.files.length > 0) {
+          setSelectedModel(data.files[0]);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  // If no model is selected, show a loading message
+  if (!selectedModel) {
+    return <div>Loading models...</div>;
+  }
+
+  // @ts-ignore
+  const modelControl = controlValues.selectedModel;
+
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
+      {/* Ensure the Leva panel is visible */}
+      <Leva collapsed={false} />
       <Canvas 
         dpr={quality.dpr}
         camera={{ position: [0, 0, 20], fov: 50 }}
-        gl={{ precision: isSafari ? "mediump" : "highp" }}  // Force lower precision on Safari to avoid shader errors
+        gl={{ precision: isSafari ? "mediump" : "highp" }}
         onCreated={(state) => {
           const { gl } = state;
           if (isSafari) {
@@ -380,7 +434,7 @@ export default function RingViewer() {
         
         <Environment files="/studio.exr" background />
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<Loader />}>
           <PerformanceMonitor
             bounds={(fps) => [50, 60]}
             ms={500}
@@ -388,7 +442,7 @@ export default function RingViewer() {
             step={0.2}
           >
             <DiamondEnvMapProvider resolution={quality.envMapResolution}>
-              <RingModel />
+              <RingModel key={selectedModel} modelPath={`/3d/${selectedModel}`} />
               {/* <EffectComposer>
                 <Bloom 
                   intensity={isMobile ? 0.15 : 0.3} 
