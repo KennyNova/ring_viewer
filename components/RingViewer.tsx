@@ -13,7 +13,9 @@ import {
   MeshRefractionMaterial,
   Stats,
   useProgress,
-  Html
+  Html,
+  Sky,
+  Backdrop
 } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useControls } from "leva";
@@ -220,8 +222,9 @@ function Diamond(props: any) {
     attenuationColor: "#ffffff"
   });
   
-  // Get the shared environment map from our provider
-  const envMap = useDiamondEnvMap();
+  // Originally, environment map was derived from DiamondEnvMapProvider:
+  const envMap = scene.environment!;
+  
   // Get performance factor (1 means best performance)
   const { factor: perfFactor } = usePerformance();
   
@@ -241,7 +244,7 @@ function Diamond(props: any) {
         scale={props.scale}
       >
         <MeshRefractionMaterial as any
-          envMap={envMap!} 
+          envMap={envMap}
           {...config} 
           toneMapped={false}
           // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
@@ -406,6 +409,7 @@ export default function RingViewer() {
         dpr={quality.dpr}
         camera={{ position: [0, 0, 20], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}
+        style={{ background: 'white' }}
         onCreated={(state) => {
           const { gl } = state;
           if (isSafari) {
@@ -425,14 +429,12 @@ export default function RingViewer() {
           }
         }}
       >
-        {/* <ambientLight intensity={15} /> */}
-        {/* <directionalLight 
-          position={[5, 5, 5]} 
-          intensity={10} 
-          shadow-mapSize={quality.shadowMapSize}
-        /> */}
-        
-        <Environment files="/studio.exr" background />
+        {/* Configure Environment for proper lighting */}
+        <Environment 
+          files="/studio.exr" 
+          background={false}
+          environmentIntensity={1.5}
+        />
 
         <Suspense fallback={<Loader />}>
           <PerformanceMonitor
@@ -441,17 +443,7 @@ export default function RingViewer() {
             iterations={5}
             step={0.2}
           >
-            <DiamondEnvMapProvider resolution={quality.envMapResolution}>
-              <RingModel key={selectedModel} modelPath={`/3d/${selectedModel}`} />
-              {/* <EffectComposer>
-                <Bloom 
-                  intensity={isMobile ? 0.15 : 0.3} 
-                  luminanceThreshold={0.95} 
-                  luminanceSmoothing={0.9}
-                  kernelSize={quality.bloomKernelSize}
-                />
-              </EffectComposer> */}
-            </DiamondEnvMapProvider>
+            <RingModel key={selectedModel} modelPath={`/3d/${selectedModel}`} />
           </PerformanceMonitor>
         </Suspense>
 
