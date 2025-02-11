@@ -204,6 +204,13 @@ function Loader() {
 function Diamond(props: any) {
   const ref = useRef<THREE.Mesh>(null);
   const { scene } = useThree();
+
+  // Add a guard to ensure the environment map is available.
+  const envMap = scene.environment;
+  if (!envMap) {
+    console.warn("Environment map is not available yet");
+    return null;
+  }
   
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   
@@ -221,9 +228,6 @@ function Diamond(props: any) {
     attenuationDistance: { value: 1, min: 0, max: 10 },
     attenuationColor: "#ffffff"
   });
-  
-  // Originally, environment map was derived from DiamondEnvMapProvider:
-  const envMap = scene.environment!;
   
   // Get performance factor (1 means best performance)
   const { factor: perfFactor } = usePerformance();
