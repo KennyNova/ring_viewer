@@ -202,29 +202,10 @@ function Loader() {
 }
 
 function Diamond(props: any) {
-  const ref = useRef<THREE.Mesh>(null);
   const { scene } = useThree();
 
-  // Wait until the environment map is loaded by using local state
-  const [envMap, setEnvMap] = useState<THREE.Texture | null>(
-    scene.environment || null
-  );
-
-  useFrame(() => {
-    if (!envMap && scene.environment) {
-      setEnvMap(scene.environment);
-    }
-  });
-
-  if (!envMap) {
-    // You can also render a fallback loader if desired:
-    // return <Html center><div>Loading environment...</div></Html>;
-    return null;
-  }
-  
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  
-  const config = useControls('Diamond', {
+  // 1. Always call useControls at the top (do not conditionally call hooks)
+  const config = useControls("Diamond", {
     bounces: { value: 3, min: 0, max: 8, step: 1 },
     aberrationStrength: { value: 0.01, min: 0, max: 0.1, step: 0.01 },
     ior: { value: 2.75, min: 0, max: 10 },
@@ -238,6 +219,21 @@ function Diamond(props: any) {
     attenuationDistance: { value: 1, min: 0, max: 10 },
     attenuationColor: "#ffffff"
   });
+
+  // 2. Load the environment map and ensure it updates each frame.
+  const [envMap, setEnvMap] = useState<THREE.Texture | null>(
+    scene.environment || null
+  );
+
+  useFrame(() => {
+    if (!envMap && scene.environment) {
+      setEnvMap(scene.environment);
+    }
+  });
+
+  if (!envMap) return null;
+  
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   
   // Get performance factor (1 means best performance)
   const { factor: perfFactor } = usePerformance();
@@ -250,7 +246,6 @@ function Diamond(props: any) {
   return (
     <group>
       <mesh
-        ref={ref}
         castShadow
         geometry={props.geometry}
         position={props.position}
