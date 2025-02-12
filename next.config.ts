@@ -1,7 +1,8 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  assetPrefix: '/', // This is the most important part!
+  // ... other configuration options (if any)
 };
 
 export default nextConfig;
