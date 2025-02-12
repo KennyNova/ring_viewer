@@ -274,11 +274,16 @@ function extractMeshes(node: THREE.Object3D, meshes: THREE.Mesh[] = []): THREE.M
 }
 
 function RingModel({ modelPath }: { modelPath: string }) {
-  const { nodes } = useGLTF(modelPath) as unknown as {
-    nodes: {
-      [key: string]: THREE.Mesh | THREE.Object3D;
-    }
-  };
+  let gltf;
+  try {
+    gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
+  } catch (error) {
+    console.error("Failed to load model at", modelPath, error);
+    // Optionally return a fallback component or alternative GLB path
+    return <mesh><boxBufferGeometry /><meshStandardMaterial color="red" /></mesh>;
+  }
+  
+  const { nodes } = gltf;
   const ringRef = useRef<THREE.Group>(null!);
 
   // Add visibility controls for each node
