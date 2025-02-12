@@ -293,8 +293,8 @@ function RingModel({ modelPath }: { modelPath: string }) {
   );
 
   const bandMaterials = {
-    'Yellow Gold': { color: '#FFD700', metalness: 1, roughness: 0.2 },
-    'Rose Gold': { color: '#B76E79', metalness: 1, roughness: 0.2 },
+    'Yellow Gold': { color: '#ffdc73', metalness: 1, roughness: 0.2 },
+    'Rose Gold': { color: '#E0BFB8', metalness: 1, roughness: 0.2 },
     'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
     'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
   };

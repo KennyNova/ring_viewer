@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  assetPrefix: '/',  // This is the essential part!
+  assetPrefix: process.env.NODE_ENV === "production" ? "https://3d.masinadiamonds.com" : "",
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
   webpack: (config) => {
     config.resolve.alias = {
