@@ -360,17 +360,16 @@ function RingModel({ modelPath }: { modelPath: string }) {
 
 interface RingViewerProps {
   models: string[];
+  selectedModel: string;
 }
 
-export default function RingViewer({ models: initialModels }: RingViewerProps) {
+export default function RingViewer({ models, selectedModel }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  // Detect Safari (exclude Chrome/Android)
   const isSafari =
     typeof navigator !== "undefined" &&
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const { factor } = usePerformance();
   
-  // Scale quality based on performance factor
   const quality = {
     dpr: factor < 0.5 ? 1 : ([1, 2] as [number, number]),
     shadowMapSize: factor < 0.5 ? 4 : 8,
@@ -378,70 +377,8 @@ export default function RingViewer({ models: initialModels }: RingViewerProps) {
     bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
 
-  // Initialize models state from the passed prop
-  const [models, setModels] = useState<string[]>(initialModels);
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Add Leva control for model selection in its own folder in the Leva panel
-  const controlValues = useControls("Model Selection", {
-    selectedModel: {
-      value: models.length > 0 ? (selectedModel || models[0]) : '',
-      onChange: setSelectedModel,
-      options: models.reduce(
-        (acc, m) => ({ ...acc, [m]: m }),
-        {} as Record<string, string>
-      )
-    }
-  }, [models]);
-
-  useEffect(() => {
-    const apiUrl = window.location.origin + '/api/models';
-    console.log("Fetching models from: ", apiUrl);
-    fetch(apiUrl)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("Received data:", data);
-        if (data && Array.isArray(data.files)) {
-          setModels(data.files);
-          if (data.files.length > 0) {
-            setSelectedModel(data.files[0]);
-          } else {
-            setError("No models found in the /public/3d directory.");
-          }
-        } else {
-          setError("Invalid data format received from /api/models.");
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching models:", err);
-        setError("Error fetching models.");
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) {
-    return <div>Loading models...</div>;
-  }
-
-  if (error) {
-    return <div>{error}</div>;
-  }
-
-  // @ts-ignore
-  const modelControl = controlValues.selectedModel;
-
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
-      {/* Ensure the Leva panel is visible */}
-      <Leva collapsed={false} />
       <Canvas 
         dpr={quality.dpr}
         camera={{ position: [0, 0, 20], fov: 50 }}
@@ -450,14 +387,12 @@ export default function RingViewer({ models: initialModels }: RingViewerProps) {
         onCreated={(state) => {
           const { gl } = state;
           if (isSafari) {
-            // Access the underlying WebGL context
             const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
             if (glContext) {
               const originalGetShaderPrecisionFormat = glContext.getShaderPrecisionFormat.bind(glContext);
               glContext.getShaderPrecisionFormat = (shaderType: any, precisionType: any) => {
                 const result = originalGetShaderPrecisionFormat(shaderType, precisionType);
                 if (result === null) {
-                  // Return a dummy precision value to avoid errors
                   return { rangeMin: 0, rangeMax: 0, precision: 0 };
                 }
                 return result;
@@ -466,7 +401,6 @@ export default function RingViewer({ models: initialModels }: RingViewerProps) {
           }
         }}
       >
-        {/* Configure Environment for proper lighting */}
         <Environment 
           files="/studio.exr" 
           background={false}
