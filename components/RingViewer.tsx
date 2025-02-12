@@ -205,10 +205,20 @@ function Diamond(props: any) {
   const ref = useRef<THREE.Mesh>(null);
   const { scene } = useThree();
 
-  // Add a guard to ensure the environment map is available.
-  const envMap = scene.environment;
+  // Wait until the environment map is loaded by using local state
+  const [envMap, setEnvMap] = useState<THREE.Texture | null>(
+    scene.environment || null
+  );
+
+  useFrame(() => {
+    if (!envMap && scene.environment) {
+      setEnvMap(scene.environment);
+    }
+  });
+
   if (!envMap) {
-    console.warn("Environment map is not available yet");
+    // You can also render a fallback loader if desired:
+    // return <Html center><div>Loading environment...</div></Html>;
     return null;
   }
   
@@ -353,7 +363,11 @@ function RingModel({ modelPath }: { modelPath: string }) {
   );
 }
 
-export default function RingViewer() {
+interface RingViewerProps {
+  models: string[];
+}
+
+export default function RingViewer({ models: initialModels }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   // Detect Safari (exclude Chrome/Android)
   const isSafari =
@@ -369,14 +383,16 @@ export default function RingViewer() {
     bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
 
-  // State for available models and selected model
-  const [models, setModels] = useState<string[]>([]);
+  // Initialize models state from the passed prop
+  const [models, setModels] = useState<string[]>(initialModels);
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Add Leva control for model selection in its own folder in the Leva panel
   const controlValues = useControls("Model Selection", {
     selectedModel: {
-      value: selectedModel,
+      value: models.length > 0 ? (selectedModel || models[0]) : '',
       onChange: setSelectedModel,
       options: models.reduce(
         (acc, m) => ({ ...acc, [m]: m }),
@@ -386,20 +402,42 @@ export default function RingViewer() {
   }, [models]);
 
   useEffect(() => {
-    fetch('/api/models')
-      .then(res => res.json())
-      .then(data => {
-        setModels(data.files);
-        if(data.files.length > 0) {
-          setSelectedModel(data.files[0]);
+    const apiUrl = window.location.origin + '/api/models';
+    console.log("Fetching models from: ", apiUrl);
+    fetch(apiUrl)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
         }
+        return res.json();
       })
-      .catch(console.error);
+      .then((data) => {
+        console.log("Received data:", data);
+        if (data && Array.isArray(data.files)) {
+          setModels(data.files);
+          if (data.files.length > 0) {
+            setSelectedModel(data.files[0]);
+          } else {
+            setError("No models found in the /public/3d directory.");
+          }
+        } else {
+          setError("Invalid data format received from /api/models.");
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching models:", err);
+        setError("Error fetching models.");
+        setLoading(false);
+      });
   }, []);
 
-  // If no model is selected, show a loading message
-  if (!selectedModel) {
+  if (loading) {
     return <div>Loading models...</div>;
+  }
+
+  if (error) {
+    return <div>{error}</div>;
   }
 
   // @ts-ignore
