@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -17,6 +17,11 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ models }: DashboardProps) {
+  // Preload the RingViewer component in the background
+  useEffect(() => {
+    import("./RingViewer");
+  }, []);
+
   return (
     <div>
       {/* Branding Header */}
