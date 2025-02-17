@@ -294,7 +294,7 @@ function RingModel({ modelPath }: { modelPath: string }) {
 
   const bandMaterials = {
     'Yellow Gold': { color: '#ffdc73', metalness: 1, roughness: 0.2 },
-    'Rose Gold': { color: '#E0BFB8', metalness: 1, roughness: 0.2 },
+    'Rose Gold': { color: '#d1b0aa', metalness: 1, roughness: 0.2 },
     'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
     'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
   };
@@ -358,9 +358,10 @@ function RingModel({ modelPath }: { modelPath: string }) {
 interface RingViewerProps {
   models: string[];
   selectedModel: string;
+  category: string;
 }
 
-export default function RingViewer({ models, selectedModel }: RingViewerProps) {
+export default function RingViewer({ models, selectedModel, category }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isSafari =
     typeof navigator !== "undefined" &&
@@ -378,7 +379,7 @@ export default function RingViewer({ models, selectedModel }: RingViewerProps) {
     <div style={{ width: "100vw", height: "100vh" }}>
       <Canvas 
         dpr={quality.dpr}
-        camera={{ position: [0, 0, 20], fov: 50 }}
+        camera={{ position: [0, 0, 25], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
@@ -411,7 +412,7 @@ export default function RingViewer({ models, selectedModel }: RingViewerProps) {
             iterations={5}
             step={0.2}
           >
-            <RingModel key={selectedModel} modelPath={`/3d/${selectedModel}`} />
+            <RingModel key={selectedModel} modelPath={`/3d/${category}/${selectedModel}.glb`} />
           </PerformanceMonitor>
         </Suspense>
 

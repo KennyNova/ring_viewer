@@ -15,17 +15,17 @@ const RingViewer = dynamic(() => import("@/components/RingViewer"), {
 export default function ModelViewerPage({
   params,
 }: {
-  params: { model: string };
+  params: { category: string; model: string };
 }) {
-  const { model } = params;
+  const { category, model } = params;
 
-  // If no model provided, show a 404 page.
-  if (!model) {
+  // Both category and model must be provided
+  if (!model || !category) {
     notFound();
   }
 
-  // Build the filename for the .glb file based on the route parameter.
-  const selectedModel = `${model}.glb`;
+  // Use the model slug as is (without appending ".glb" because RingViewer adds it)
+  const selectedModel = model;
 
   return (
     <div className="min-h-screen">
@@ -45,7 +45,11 @@ export default function ModelViewerPage({
           </button>
         </Link>
       </div>
-      <RingViewer models={[selectedModel]} selectedModel={selectedModel} />
+      <RingViewer
+        models={[selectedModel]}
+        selectedModel={selectedModel}
+        category={category}
+      />
     </div>
   );
 } 
