@@ -28,8 +28,18 @@ export default function ModelViewerPage({
   const selectedModel = model;
 
   return (
-    <div className="min-h-screen">
-      <div style={{ padding: "20px" }}>
+    <div className="min-h-screen" style={{ position: "relative" }}>
+      <RingViewer
+        models={[selectedModel]}
+        selectedModel={selectedModel}
+        category={category}
+      />
+      <div style={{
+        position: "absolute",
+        top: "20px",
+        left: "20px",
+        zIndex: 10,
+      }}>
         <Link href="/">
           <button
             style={{
@@ -45,11 +55,6 @@ export default function ModelViewerPage({
           </button>
         </Link>
       </div>
-      <RingViewer
-        models={[selectedModel]}
-        selectedModel={selectedModel}
-        category={category}
-      />
     </div>
   );
 } 

@@ -376,10 +376,10 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   };
 
   return (
-    <div style={{ width: "100vw", height: "100vh" }}>
+    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <Canvas 
         dpr={quality.dpr}
-        camera={{ position: [0, 0, 25], fov: 50 }}
+        camera={{ position: [-15, 25, 25], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
@@ -400,9 +400,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         }}
       >
         <Environment 
-          files="/studio.exr" 
+          files="/studio.hdr" 
           background={false}
-          environmentIntensity={1.5}
+          environmentIntensity={1}
         />
 
         <Suspense fallback={<Loader />}>
@@ -417,11 +417,24 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         </Suspense>
 
         {!isMobile && <axesHelper args={[5]} />}
-        <OrbitControls enablePan={false} minDistance={15} maxDistance={50} minPolarAngle={Math.PI / 3.4} />
+        <OrbitControls enablePan={false} minDistance={15} maxDistance={50}  />
         
         <Stats />
 
       </Canvas>
+      <div style={{
+        position: "absolute",
+        bottom: "20px",
+        width: "100%",
+        textAlign: "center",
+        pointerEvents: "none",
+        color: "#000",
+        fontSize: "1em",
+        background: "rgba(255, 255, 255, 0.7)",
+        padding: "5px 0"
+      }}>
+        <p>This is a render — the final ring may appear differently.</p>
+      </div>
     </div>
   );
 }
