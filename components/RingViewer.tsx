@@ -379,7 +379,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <Canvas 
         dpr={quality.dpr}
-        camera={{ position: [-15, 25, 25], fov: 50 }}
+        camera={{ position: [-22, 31, 24], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
