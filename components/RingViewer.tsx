@@ -23,6 +23,14 @@ import { RGBELoader } from "three-stdlib";
 import React, { createContext, useContext, useState } from 'react';
 import { Leva } from "leva";
 
+declare global {
+  interface Window {
+    __LEVA__: {
+      setSettings: (settings: { hidden?: boolean, collapsed?: boolean } | ((prev: any) => any)) => void;
+    };
+  }
+}
+
 const DiamondEnvMapContext = createContext<THREE.Texture | null>(null);
 
 // Create a context to provide the performance factor.
@@ -361,6 +369,20 @@ export default function RingViewer({ models, selectedModel, category }: RingView
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const { factor } = usePerformance();
   
+  const [showLeva, setShowLeva] = useState(false);
+
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        setShowLeva(prev => !prev);
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
   // NEW: Add state for the selected band color
   const [selectedBandColor, setSelectedBandColor] = useState("Yellow Gold");
 
@@ -377,7 +399,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   // NEW: Define band options with their respective colors
   const bandOptions = [
     { name: "Yellow Gold", color: "#ffdc73" },
-    { name: "Rose Gold", color: "#d1b0aa" },
+    { name: "Rose Gold", color: "#B76E79" },
     { name: "White Gold", color: "#E8E8E8" },
     { name: "Platinum", color: "#E5E4E2" }
   ];
@@ -428,7 +450,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
               cursor: "pointer"
             }}
           >
-            {showBandSelector ? "◀" : "▶"}
+            {showBandSelector ? "▼" : "▲"}
           </button>
         </div>
         <div
@@ -536,6 +558,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       }}>
         <p>This is a render — the final ring may appear differently.</p>
       </div>
+
+      <Leva hidden={!showLeva} />
     </div>
   );
 }
