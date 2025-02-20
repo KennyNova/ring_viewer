@@ -414,51 +414,69 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       <div
         style={{
           position: "absolute",
-          bottom: "20px",
-          left: isMobile ? "50%" : "20px",
+          ...(isMobile 
+            ? {
+                top: "20px",
+                right: "20px",
+                transform: "translateX(0)"
+              }
+            : {
+                bottom: "20px",
+                left: "20px"
+              }
+          ),
           width: isMobile ? "90%" : "260px",
-          ...(isMobile ? { transform: "translateX(-50%)" } : {}),
+          maxWidth: isMobile ? "200px" : "260px",
           background: "rgba(20, 20, 20, 0.85)",
           backdropFilter: "blur(10px)",
           color: "#fff",
           padding: isMobile ? "10px" : "20px",
           boxSizing: "border-box",
           zIndex: 10,
-          borderRadius: "12px"
+          borderRadius: "12px",
+          transition: "transform 0.3s ease"
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "1.5em",
-              fontWeight: "600",
-              whiteSpace: "nowrap"
-            }}
-          >
-            Band Color
-          </h2>
-          <button
-            onClick={() => setShowBandSelector(!showBandSelector)}
-            style={{
-              background: "rgba(20,20,20,0.85)",
-              border: "none",
-              color: "#fff",
-              borderRadius: "50%",
-              width: "30px",
-              height: "30px",
-              cursor: "pointer"
-            }}
-          >
-            {showBandSelector ? "▼" : "▲"}
-          </button>
+          {!isMobile && (
+            <>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "1.5em",
+                  fontWeight: "600",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                Band Color
+              </h2>
+              <button
+                onClick={() => setShowBandSelector(!showBandSelector)}
+                style={{
+                  background: "rgba(20,20,20,0.85)",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: "50%",
+                  width: "30px",
+                  height: "30px",
+                  cursor: "pointer"
+                }}
+              >
+                {showBandSelector ? "▼" : "▲"}
+              </button>
+            </>
+          )}
         </div>
         <div
           style={{
-            maxHeight: showBandSelector ? "300px" : "0px",
+            maxHeight: showBandSelector ? (isMobile ? "50px" : "300px") : "0px",
             overflow: "hidden",
             transition: "max-height 0.3s ease",
-            marginTop: "20px",
+            marginTop: isMobile ? "0" : "20px",
+            display: "flex",
+            flexDirection: isMobile ? "row" : "column",
+            gap: isMobile ? "10px" : "0",
+            alignItems: isMobile ? "center" : "stretch"
           }}
         >
           {bandOptions.map((band) => (
@@ -466,12 +484,22 @@ export default function RingViewer({ models, selectedModel, category }: RingView
               key={band.name}
               onClick={() => setSelectedBandColor(band.name)}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "100%",
-                padding: "12px 0",
-                margin: "10px 0",
+                ...(isMobile 
+                  ? {
+                      width: "30px",
+                      height: "30px",
+                      padding: 0,
+                      margin: 0
+                    }
+                  : {
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      padding: "12px 0",
+                      margin: "10px 0"
+                    }
+                ),
                 background: selectedBandColor === band.name
                   ? "rgba(68, 68, 68, 0.9)"
                   : "transparent",
@@ -482,17 +510,30 @@ export default function RingViewer({ models, selectedModel, category }: RingView
                 transition: "all 0.3s ease"
               }}
             >
-              <div
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  borderRadius: "50%",
-                  background: band.color,
-                  marginRight: "8px",
-                  border: "1px solid #fff"
-                }}
-              />
-              {band.name}
+              {isMobile ? (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "4px",
+                    background: band.color
+                  }}
+                />
+              ) : (
+                <>
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "50%",
+                      background: band.color,
+                      marginRight: "8px",
+                      border: "1px solid #fff"
+                    }}
+                  />
+                  {band.name}
+                </>
+              )}
             </button>
           ))}
         </div>
