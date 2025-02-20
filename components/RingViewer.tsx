@@ -314,7 +314,6 @@ function RingModel({ modelPath }: { modelPath: string }) {
   for (const [_, node] of Object.entries(nodes)) {
     if (node instanceof THREE.Mesh) {
       const material = node.material instanceof THREE.Material ? node.material : undefined;
-      // Classify as diamond gem if the material has the WEBGI_materials_diamond extension.
       if (material?.userData?.gltfExtensions?.WEBGI_materials_diamond) {
         gemNodes.push(node);
       } else {
@@ -323,22 +322,23 @@ function RingModel({ modelPath }: { modelPath: string }) {
     }
   }
 
-  // Use the first band node as the primary ring band.
-  const bandNode = bandNodes[0];
-  if (!bandNode?.geometry) {
-    console.error("Failed to load ring band");
-    return null;
-  }
-
   const selectedMaterial = bandMaterials[bandConfig.material as keyof typeof bandMaterials];
 
   return (
     <group ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-      {visibilityControls[bandNode.name] && (
-        <mesh geometry={bandNode.geometry}>
-          <meshStandardMaterial {...selectedMaterial} />
-        </mesh>
-      )}
+      {bandNodes.map((node, index) => (
+        visibilityControls[node.name] && (
+          <mesh 
+            key={index}
+            geometry={node.geometry}
+            position={node.position.toArray()}
+            rotation={[node.rotation.x, node.rotation.y, node.rotation.z]}
+            scale={node.scale.toArray()}
+          >
+            <meshStandardMaterial {...selectedMaterial} />
+          </mesh>
+        )
+      ))}
       
       {gemNodes.map((gem, index) => (
         visibilityControls[gem.name] && (
@@ -433,7 +433,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         background: "rgba(255, 255, 255, 0.7)",
         padding: "5px 0"
       }}>
-        <p>This is a render test14— the final ring may appear differently.</p>
+        <p>This is a render — the final ring may appear differently.</p>
       </div>
     </div>
   );
