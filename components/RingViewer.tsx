@@ -281,6 +281,42 @@ function extractMeshes(node: THREE.Object3D, meshes: THREE.Mesh[] = []): THREE.M
   return meshes;
 }
 
+// NEW: AnimatedStandardMaterial component to gradually animate the color change
+function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props }: any) {
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Store the target color in a ref to persist between renders
+  const targetColorRef = useRef(new THREE.Color(targetColor));
+ 
+  // Update the target color ref whenever the prop changes
+  useEffect(() => {
+    targetColorRef.current.set(targetColor);
+  }, [targetColor]);
+ 
+  // On the first mount, set the material's color to the target color
+  useEffect(() => {
+    if (materialRef.current) {
+      materialRef.current.color.set(targetColor);
+    }
+  }, []);
+ 
+  const speed = 3; // Adjust this speed factor as needed
+  useFrame((state, delta) => {
+    if (materialRef.current) {
+      // Lerp the current color toward the stored target color
+      materialRef.current.color.lerp(targetColorRef.current, delta * speed);
+    }
+  });
+
+  return (
+    <meshStandardMaterial
+      ref={materialRef}
+      metalness={metalness}
+      roughness={roughness}
+      {...props}
+    />
+  );
+}
+
 function RingModel({ modelPath, selectedBandColor }: { modelPath: string, selectedBandColor: string }) {
   const gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
   const { nodes } = gltf;
@@ -336,7 +372,11 @@ function RingModel({ modelPath, selectedBandColor }: { modelPath: string, select
             rotation={[node.rotation.x, node.rotation.y, node.rotation.z]}
             scale={node.scale.toArray()}
           >
-            <meshStandardMaterial {...selectedMaterial} />
+            <AnimatedStandardMaterial 
+              targetColor={selectedMaterial.color}
+              metalness={selectedMaterial.metalness}
+              roughness={selectedMaterial.roughness}
+            />
           </mesh>
         )
       ))}
@@ -427,9 +467,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           ),
           width: isMobile ? "90%" : "260px",
           maxWidth: isMobile ? "200px" : "260px",
-          background: "rgba(20, 20, 20, 0.85)",
+          background: "#dcd1c7",
           backdropFilter: "blur(10px)",
-          color: "#fff",
+          color: "#000",
           padding: isMobile ? "10px" : "20px",
           boxSizing: "border-box",
           zIndex: 10,
@@ -453,7 +493,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
               <button
                 onClick={() => setShowBandSelector(!showBandSelector)}
                 style={{
-                  background: "rgba(20,20,20,0.85)",
+                  background: "#ab9580",
                   border: "none",
                   color: "#fff",
                   borderRadius: "50%",
@@ -500,11 +540,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
                       margin: "10px 0"
                     }
                 ),
-                background: selectedBandColor === band.name
-                  ? "rgba(68, 68, 68, 0.9)"
-                  : "transparent",
-                color: "#fff",
-                border: `2px solid ${band.color}`,
+                background: selectedBandColor === band.name ? band.color : "transparent",
+                color: selectedBandColor === band.name ? "#fff" : "#000",
+                border: `2px solid ${selectedBandColor === band.name ? darkenColor(band.color) : band.color}`,
                 borderRadius: "8px",
                 cursor: "pointer",
                 transition: "all 0.3s ease"
@@ -603,4 +641,26 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       <Leva hidden={!showLeva} />
     </div>
   );
+}
+
+// Helper function to darken the color
+function darkenColor(color: string): string {
+  const amount = 20; // Adjust this value to control how much darker the color should be
+  let usePound = false;
+
+  if (color[0] === "#") {
+    color = color.slice(1);
+    usePound = true;
+  }
+
+  const num = parseInt(color, 16);
+  let r = (num >> 16) - amount;
+  let b = ((num >> 8) & 0x00FF) - amount;
+  let g = (num & 0x0000FF) - amount;
+
+  r = r < 0 ? 0 : r;
+  b = b < 0 ? 0 : b;
+  g = g < 0 ? 0 : g;
+
+  return (usePound ? "#" : "") + (g | (b << 8) | (r << 16)).toString(16);
 }
