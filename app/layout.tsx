@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { GoogleAnalytics } from '@next/third-parties/google'
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -15,6 +16,7 @@ export default function RootLayout({
     <html className="min-h-screen" lang="en">
       <body className="h-screen antialiased overflow-hidden">
         {children}
+        <GoogleAnalytics gaId="G-6J91GF5STM" />
       </body>
     </html>
   );
