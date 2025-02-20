@@ -204,21 +204,21 @@ function Loader() {
 function Diamond(props: any) {
   const { scene } = useThree();
 
-  // 1. Always call useControls at the top (do not conditionally call hooks)
-  const config = useControls("Diamond", {
-    bounces: { value: 3, min: 0, max: 8, step: 1 },
-    aberrationStrength: { value: 0.01, min: 0, max: 0.1, step: 0.01 },
-    ior: { value: 2.75, min: 0, max: 10 },
-    fresnel: { value: 1, min: 0, max: 1 },
+  // Use default hardcoded diamond properties instead of Leva controls
+  const config = {
+    bounces: 3,
+    aberrationStrength: 0.01,
+    ior: 2.75,
+    fresnel: 1,
     color: "white",
-    transmission: { value: 0, min: 0, max: 1 },
-    thickness: { value: 0.5, min: 0, max: 2 },
-    roughness: { value: 0, min: 0, max: 1 },
-    clearcoat: { value: 0.1, min: 0, max: 1 },
-    clearcoatRoughness: { value: 0.1, min: 0, max: 1 },
-    attenuationDistance: { value: 1, min: 0, max: 10 },
-    attenuationColor: "#ffffff"
-  });
+    transmission: 0,
+    thickness: 0.5,
+    roughness: 0,
+    clearcoat: 0.1,
+    clearcoatRoughness: 0.1,
+    attenuationDistance: 1,
+    attenuationColor: "#ffffff",
+  };
 
   // 2. Load the environment map and ensure it updates each frame.
   const [envMap, setEnvMap] = useState<THREE.Texture | null>(
@@ -273,22 +273,19 @@ function extractMeshes(node: THREE.Object3D, meshes: THREE.Mesh[] = []): THREE.M
   return meshes;
 }
 
-function RingModel({ modelPath }: { modelPath: string }) {
+function RingModel({ modelPath, selectedBandColor }: { modelPath: string, selectedBandColor: string }) {
   const gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
   const { nodes } = gltf;
   const ringRef = useRef<THREE.Group>(null!);
 
-  // Add visibility controls for each node
+  // Unchanged: visibility controls for each node
   const meshNodes = Object.entries(nodes).filter(
     ([_, node]) => node instanceof THREE.Mesh
   );
   
   const visibilityControls = useControls('Node Visibility', 
     Object.fromEntries(
-      meshNodes.map(([name, _]) => [
-        name,
-        true
-      ])
+      meshNodes.map(([name, _]) => [ name, true ])
     )
   );
 
@@ -299,14 +296,12 @@ function RingModel({ modelPath }: { modelPath: string }) {
     'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
   };
 
-  const bandConfig = useControls('Band', {
-    material: {
-      options: Object.keys(bandMaterials)
-    }
-  });
+  // Removed the Leva controls for band material.
+  // Instead, select the band material using the passed prop.
+  const selectedMaterial = bandMaterials[selectedBandColor as keyof typeof bandMaterials];
 
   if (!nodes) return null;
-
+  
   // Differentiate nodes based on the material's gltfExtensions.
   const bandNodes: THREE.Mesh[] = [];
   const gemNodes: THREE.Mesh[] = [];
@@ -321,8 +316,6 @@ function RingModel({ modelPath }: { modelPath: string }) {
       }
     }
   }
-
-  const selectedMaterial = bandMaterials[bandConfig.material as keyof typeof bandMaterials];
 
   return (
     <group ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
@@ -368,6 +361,12 @@ export default function RingViewer({ models, selectedModel, category }: RingView
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const { factor } = usePerformance();
   
+  // NEW: Add state for the selected band color
+  const [selectedBandColor, setSelectedBandColor] = useState("Yellow Gold");
+
+  // NEW: State to toggle band color selector visibility
+  const [showBandSelector, setShowBandSelector] = useState(true);
+
   const quality = {
     dpr: factor < 0.5 ? 1 : ([1, 2] as [number, number]),
     shadowMapSize: factor < 0.5 ? 4 : 8,
@@ -375,11 +374,112 @@ export default function RingViewer({ models, selectedModel, category }: RingView
     bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
 
+  // NEW: Define band options with their respective colors
+  const bandOptions = [
+    { name: "Yellow Gold", color: "#ffdc73" },
+    { name: "Rose Gold", color: "#d1b0aa" },
+    { name: "White Gold", color: "#E8E8E8" },
+    { name: "Platinum", color: "#E5E4E2" }
+  ];
+
+  // Hardcoded HDR settings: intensity 2.2 and blur 0
+  const hdrIntensity = 2.2;
+  const hdrBlur = 0;
+
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+      
+      <div
+        style={{
+          position: "absolute",
+          bottom: "20px",
+          left: isMobile ? "50%" : "20px",
+          width: isMobile ? "90%" : "260px",
+          ...(isMobile ? { transform: "translateX(-50%)" } : {}),
+          background: "rgba(20, 20, 20, 0.85)",
+          backdropFilter: "blur(10px)",
+          color: "#fff",
+          padding: isMobile ? "10px" : "20px",
+          boxSizing: "border-box",
+          zIndex: 10,
+          borderRadius: "12px"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "1.5em",
+              fontWeight: "600",
+              whiteSpace: "nowrap"
+            }}
+          >
+            Band Color
+          </h2>
+          <button
+            onClick={() => setShowBandSelector(!showBandSelector)}
+            style={{
+              background: "rgba(20,20,20,0.85)",
+              border: "none",
+              color: "#fff",
+              borderRadius: "50%",
+              width: "30px",
+              height: "30px",
+              cursor: "pointer"
+            }}
+          >
+            {showBandSelector ? "◀" : "▶"}
+          </button>
+        </div>
+        <div
+          style={{
+            maxHeight: showBandSelector ? "300px" : "0px",
+            overflow: "hidden",
+            transition: "max-height 0.3s ease",
+            marginTop: "20px",
+          }}
+        >
+          {bandOptions.map((band) => (
+            <button
+              key={band.name}
+              onClick={() => setSelectedBandColor(band.name)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                padding: "12px 0",
+                margin: "10px 0",
+                background: selectedBandColor === band.name
+                  ? "rgba(68, 68, 68, 0.9)"
+                  : "transparent",
+                color: "#fff",
+                border: `2px solid ${band.color}`,
+                borderRadius: "8px",
+                cursor: "pointer",
+                transition: "all 0.3s ease"
+              }}
+            >
+              <div
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  borderRadius: "50%",
+                  background: band.color,
+                  marginRight: "8px",
+                  border: "1px solid #fff"
+                }}
+              />
+              {band.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Unchanged: Canvas and its configuration */}
       <Canvas 
         dpr={quality.dpr}
-        camera={{ position: [-22, 31, 24], fov: 50 }}
+        camera={{ position: [22, 31, 23], fov: 50 }}
         gl={{ precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
@@ -402,7 +502,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         <Environment 
           files="/studio.hdr" 
           background={false}
-          environmentIntensity={1}
+          environmentIntensity={2.2}
+          blur={0}
         />
 
         <Suspense fallback={<Loader />}>
@@ -412,11 +513,11 @@ export default function RingViewer({ models, selectedModel, category }: RingView
             iterations={5}
             step={0.2}
           >
-            <RingModel key={selectedModel} modelPath={`/3d/${category}/${selectedModel}.glb`} />
+            {/* Pass the selectedBandColor to RingModel */}
+            <RingModel key={selectedModel} modelPath={`/3d/${category}/${selectedModel}.glb`} selectedBandColor={selectedBandColor} />
           </PerformanceMonitor>
         </Suspense>
 
-        {!isMobile && <axesHelper args={[5]} />}
         <OrbitControls enablePan={false} minDistance={15} maxDistance={50}  />
         
         <Stats />
