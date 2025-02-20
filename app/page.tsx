@@ -2,6 +2,17 @@ import { readdirSync, statSync } from "fs";
 import { join } from "path";
 import Dashboard from "@/components/Dashboard";
 
+// Preload HDR file so it's cached when the user selects a model
+export const metadata = {
+  links: [
+    {
+      rel: "preload",
+      href: "/studio.hdr",
+      as: "image",
+    },
+  ],
+};
+
 export default function Home() {
   let categorizedModels: Record<string, string[]> = {};
   try {

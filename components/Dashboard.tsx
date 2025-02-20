@@ -3,12 +3,22 @@
 import React, { useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { motion } from "framer-motion";
 
 // The RingViewer is kept client-side (via dynamic import)
 const RingViewer = dynamic(() => import("./RingViewer"), {
   ssr: false,
   loading: () => (
-    <div className="fixed inset-0 w-full h-full min-h-screen bg-gray-100 animate-pulse" />
+    <div
+      style={{
+        position: "fixed",
+        inset: "0",
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#FFFDD0", // Cream background
+        animation: "pulse 2s infinite",
+      }}
+    />
   ),
 });
 
@@ -22,8 +32,28 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
     import("./RingViewer");
   }, []);
 
+  // Variants for staggering cards
+  const containerVariants = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: 0.15, // Delay of 0.15s between each card
+      },
+    },
+  };
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+  };
+
   return (
-    <div>
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      style={{ backgroundColor: "#FFFDD0", minHeight: "100vh", padding: "20px" }} // Cream page background
+    >
       {/* Branding Header */}
       <h1
         style={{
@@ -48,20 +78,27 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
           >
             {category}
           </h2>
-          <div
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
               gap: "20px",
               padding: "20px",
-              backgroundColor: "#FFFDD0", // Cream background
+              backgroundColor: "#FFFDD0", // Cream background for the grid container
             }}
           >
             {models.map((model) => {
               const gifSrc = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
               return (
                 <Link key={model} href={`/${category}/${model.replace(".glb", "")}`}>
-                  <div
+                  <motion.div
+                    variants={cardVariants}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: "spring", stiffness: 300 }}
                     style={{
                       cursor: "pointer",
                       border: "1px solid #D4AF37", // Gold border
@@ -69,13 +106,6 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
                       padding: "10px",
                       background: "#FFF8E1", // Lighter cream
                       boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                      transition: "transform 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.transform = "scale(1.05)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.transform = "scale(1)";
                     }}
                   >
                     <img
@@ -91,13 +121,13 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
                     >
                       {model.replace(".glb", "")}
                     </p>
-                  </div>
+                  </motion.div>
                 </Link>
               );
             })}
-          </div>
+          </motion.div>
         </div>
       ))}
-    </div>
+    </motion.div>
   );
 } 
