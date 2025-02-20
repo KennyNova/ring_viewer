@@ -433,7 +433,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         background: "rgba(255, 255, 255, 0.7)",
         padding: "5px 0"
       }}>
-        <p>This is a render test12— the final ring may appear differently.</p>
+        <p>This is a render test13— the final ring may appear differently.</p>
       </div>
     </div>
   );
