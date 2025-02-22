@@ -17,7 +17,7 @@ import {
   Sky,
   Backdrop
 } from "@react-three/drei";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { EffectComposer } from "@react-three/postprocessing";
 import { useControls } from "leva";
 import { RGBELoader } from "three-stdlib";
 import React, { createContext, useContext, useState } from 'react';
@@ -196,23 +196,56 @@ export function useDiamondEnvMap() {
   return useContext(DiamondEnvMapContext);
 }
 
-// Loader component to display a loading screen with a progress bar
-function Loader() {
-  const { progress } = useProgress();
+function CombinedLoader({ preTestProgress }: { preTestProgress: number }) {
+  const { progress: modelProgress } = useProgress();
+  // Combine both progress values. Adjust these weights as desired.
+  const combined = 0.4 * preTestProgress + 0.6 * modelProgress;
+  if (combined >= 100) return null;
   return (
-    <Html center>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'white', fontSize: '1.5em' }}>
-        <div>{progress.toFixed(0)}% loaded</div>
-        <progress value={progress} max="100" style={{ width: '200px' }} />
+    <div style={{
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100vw",
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "#111",
+      zIndex: 9999,
+      opacity: 0.95,
+      fontFamily: "monospace"
+    }}>
+      <div style={{
+        marginBottom: "1rem",
+        color: "#0ff",
+        fontSize: "1.5rem"
+      }}>
+        Loading {combined.toFixed(0)}%
       </div>
-    </Html>
+      <div style={{
+        width: "80%",
+        height: "8px",
+        background: "#333",
+        borderRadius: "4px",
+        overflow: "hidden"
+      }}>
+        <div style={{
+          height: "100%",
+          width: `${combined}%`,
+          background: "#0ff",
+          transition: "width 0.3s ease"
+        }} />
+      </div>
+    </div>
   );
 }
 
 function Diamond(props: any) {
   const { scene } = useThree();
 
-  // Use default hardcoded diamond properties instead of Leva controls
+  // Configuration for the refraction material remains unchanged.
   const config = {
     bounces: 3,
     aberrationStrength: 0.01,
@@ -228,7 +261,6 @@ function Diamond(props: any) {
     attenuationColor: "#ffffff",
   };
 
-  // 2. Load the environment map and ensure it updates each frame.
   const [envMap, setEnvMap] = useState<THREE.Texture | null>(
     scene.environment || null
   );
@@ -242,14 +274,31 @@ function Diamond(props: any) {
   if (!envMap) return null;
   
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  
-  // Get performance factor (1 means best performance)
   const { factor: perfFactor } = usePerformance();
-  
-  // Base blur value depends on mobile or desktop.
   const baseBlur = isMobile ? 0.8 : 0.4;
-  // Adjust blur: if performance is lower (perfFactor near 0), add a bit more blur.
   const adjustedBlur = baseBlur + (1 - perfFactor) * 0.2;
+  
+  // NEW: Fallback for low performance devices. 
+  // When perfFactor is below 0.5, use a simpler material and optionally disable shadows.
+  if (perfFactor < 0.5) {
+    return (
+      <group>
+        <mesh
+          castShadow={false} // Disable shadows to improve performance further.
+          geometry={props.geometry}
+          position={props.position}
+          rotation={props.rotation}
+          scale={props.scale}
+        >
+          <meshStandardMaterial 
+            color="#ccc"       // A simple, neutral color
+            roughness={0.6}    // Adjust roughness as needed
+            metalness={0.2}    // Lower metalness keeps it simple
+          />
+        </mesh>
+      </group>
+    );
+  }
   
   return (
     <group>
@@ -266,7 +315,7 @@ function Diamond(props: any) {
           toneMapped={false}
           // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
           blur={adjustedBlur}
-          flatShading={perfFactor < 0.7} // Enable jagged (flat) shading when performance is low
+          flatShading={perfFactor < 0.7} // Enable flat shading when performance is lower
         />
       </mesh>
     </group>
@@ -429,12 +478,41 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   // NEW: State to toggle band color selector visibility
   const [showBandSelector, setShowBandSelector] = useState(true);
 
+  // NEW: Pre‑test to measure device performance (average FPS) before rendering the main scene,
+  // also tracking a progress value (0 to 100).
+  const [initialFps, setInitialFps] = useState<number | null>(null);
+  const [preTestProgress, setPreTestProgress] = useState<number>(0);
+  useEffect(() => {
+    let startTime = performance.now();
+    let frameCount = 0;
+    let animationFrameId: number;
+    function measure() {
+      frameCount++;
+      const now = performance.now();
+      const progress = Math.min(((now - startTime) / 2000) * 100, 100);
+      setPreTestProgress(progress);
+      if (now - startTime < 2000) {
+        animationFrameId = requestAnimationFrame(measure);
+      } else {
+        const measuredFps = frameCount / ((now - startTime) / 1000);
+        setInitialFps(measuredFps);
+      }
+    }
+    animationFrameId = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
+  // Compute locked quality based solely on the pre-test result.
+  const lockedLowFps = initialFps !== null ? initialFps < 30 : false;
+
   const quality = {
     dpr: factor < 0.5 ? 1 : ([1, 2] as [number, number]),
     shadowMapSize: factor < 0.5 ? 4 : 8,
     envMapResolution: factor < 0.5 ? 8 : 6,
-    bloomKernelSize: factor < 0.5 ? 1 : 3,
   };
+
+  // NEW: Lower render resolution based on the locked quality setting.
+  const computedDpr = lockedLowFps ? 0.8 : quality.dpr;
 
   // NEW: Define band options with their respective colors
   const bandOptions = [
@@ -447,6 +525,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   // Hardcoded HDR settings: intensity 2.2 and blur 0
   const hdrIntensity = 2.2;
   const hdrBlur = 0;
+  // NEW: Lower light intensity based on the locked quality setting.
+  const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : hdrIntensity;
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
@@ -579,9 +659,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
 
       {/* Unchanged: Canvas and its configuration */}
       <Canvas 
-        dpr={quality.dpr}
+        dpr={computedDpr}
         camera={{ position: [22, 31, 23], fov: 50 }}
-        gl={{ precision: isSafari ? "mediump" : "highp" }}
+        gl={{ antialias: !lockedLowFps, precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
           const { gl } = state;
@@ -603,18 +683,17 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         <Environment 
           files="/studio.hdr" 
           background={false}
-          environmentIntensity={2.2}
-          blur={0}
+          environmentIntensity={effectiveEnvironmentIntensity}
+          blur={hdrBlur}
         />
 
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={null}>
           <PerformanceMonitor
             bounds={(fps) => [50, 60]}
             ms={500}
             iterations={5}
             step={0.2}
           >
-            {/* Pass the selectedBandColor to RingModel */}
             <RingModel key={selectedModel} modelPath={`/3d/${category}/${selectedModel}.glb`} selectedBandColor={selectedBandColor} />
           </PerformanceMonitor>
         </Suspense>
@@ -639,6 +718,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       </div>
 
       <Leva hidden={!showLeva} />
+
+      {/* NEW: Combined loader overlay */}
+      <CombinedLoader preTestProgress={preTestProgress} />
     </div>
   );
 }
