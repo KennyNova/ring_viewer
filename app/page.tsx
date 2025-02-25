@@ -77,16 +77,16 @@ export default function Home() {
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "center",
-        gap: "30px",
-        padding: "20px",
+        gap: "15px",
+        padding: "10px",
       }}>
         {availableCategories.map((category) => (
           <Link key={category} href={`/${category}`}>
             <HoverableDiv
               style={{
                 backgroundColor: "#f5f0eb",
-                padding: "20px 30px",
-                borderRadius: "10px",
+                padding: "15px 20px",
+                borderRadius: "8px",
                 boxShadow: "0 4px 12px rgba(139,115,85,0.1)",
                 cursor: "pointer",
               }}
@@ -96,7 +96,7 @@ export default function Home() {
                   margin: "0",
                   textAlign: "center",
                   color: "#8b7355",
-                  fontSize: "1.5rem",
+                  fontSize: "clamp(1rem, 3vw, 1.5rem)",
                   fontWeight: "300",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",

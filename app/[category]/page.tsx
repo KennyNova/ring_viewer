@@ -55,11 +55,11 @@ export default function CategoryPage({ params }: { params: { category: string } 
       </h1>
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-        gap: "30px",
+        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+        gap: "15px",
         width: "100%",
         maxWidth: "1200px",
-        padding: "20px",
+        padding: "10px",
         margin: "0 auto",
       }}>
         {models.map((model, index) => {

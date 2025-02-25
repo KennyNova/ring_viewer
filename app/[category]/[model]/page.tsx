@@ -35,23 +35,39 @@ export default function ModelViewerPage({
         category={category}
       />
       <div style={{
-        position: "absolute",
-        top: "20px",
-        left: "20px",
-        zIndex: 10,
-      }}>
-        <Link href="/">
-          <button
+          position: "absolute",
+          top: "20px",
+          left: "20px",
+          zIndex: 20,
+        }}
+        className="flex flex-col gap-1"
+      >
+        <Link href="/" className="block">
+          <button className="w-full"
             style={{
               background: "#D4AF37",
               color: "white",
               border: "none",
               borderRadius: "5px",
               padding: "10px 20px",
-              cursor: "pointer",
+              cursor: "pointer"
             }}
           >
             Back to Dashboard
+          </button>
+        </Link>
+        <Link href={`/${category}`} className="block">
+          <button className="w-full"
+            style={{
+              background: "#D4AF37",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              padding: "10px 20px",
+              cursor: "pointer"
+            }}
+          >
+            Back to {category}
           </button>
         </Link>
       </div>

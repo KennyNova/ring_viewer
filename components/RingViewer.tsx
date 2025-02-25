@@ -60,6 +60,7 @@ export type PerformanceMonitorProps = {
   onDecline?: (api: PerformanceMonitorApi) => void;
   onChange?: (api: PerformanceMonitorApi) => void;
   onFallback?: (api: PerformanceMonitorApi) => void;
+  staticFactor?: number; // NEW: Static performance factor to disable dynamic adjustments.
   children?: React.ReactNode;
 };
 
@@ -74,9 +75,10 @@ export function PerformanceMonitor({
   onDecline,
   onChange,
   onFallback,
+  staticFactor,
   children,
 }: PerformanceMonitorProps) {
-  const [factor, setFactor] = useState(initialFactor);
+  const [factor, setFactor] = useState(staticFactor !== undefined ? staticFactor : initialFactor);
   const frames = useRef<number[]>([]);
   const averages = useRef<number[]>([]);
   const flipCount = useRef(0);
@@ -90,6 +92,9 @@ export function PerformanceMonitor({
   const cooldown = 500;
 
   useFrame((state, delta) => {
+    // Skip dynamic adjustments if a static factor is provided.
+    if (staticFactor !== undefined) return;
+
     frames.current.push(1 / delta);
     const now = performance.now();
 
@@ -103,19 +108,15 @@ export function PerformanceMonitor({
         const finalAvg = averages.current.reduce((a, b) => a + b, 0) / averages.current.length;
         const [lower, upper] = bounds(finalAvg);
         
-        // --- Adjust sampling interval dynamically ---
+        // Adjust sampling interval dynamically
         if (finalAvg > upper) {
-          // When performance is well above the upper bound, reduce sampling frequency
           sampleIntervalRef.current = Math.min(sampleIntervalRef.current * 1.5, ms * 4);
         } else if (finalAvg < lower) {
-          // When performance is too low, increase sampling frequency for faster response
           sampleIntervalRef.current = Math.max(sampleIntervalRef.current / 1.5, ms / 2);
         }
         
-        // --- Update the performance factor only if cooldown has passed ---
         if (now - lastUpdateTime.current >= cooldown) {
           if (finalAvg < lower) {
-            // Scale the adjustment based on the relative difference
             const adjustmentFactor = step * ((lower - finalAvg) / lower);
             const newFactor = Math.max(0, factor - adjustmentFactor);
             setFactor(newFactor);
@@ -244,19 +245,21 @@ function CombinedLoader({ preTestProgress }: { preTestProgress: number }) {
 
 function Diamond(props: any) {
   const { scene } = useThree();
+  // NEW: Accept an optional prop to indicate an oval diamond
+  const { isOval = false } = props; 
 
-  // Configuration for the refraction material remains unchanged.
+  // Optimized configuration for the refraction material.
   const config = {
-    bounces: 3,
-    aberrationStrength: 0.01,
+    bounces: isOval ? 1 : 3,                // Fewer bounces for oval diamonds
+    aberrationStrength: isOval ? 0.0 : 0.01,  // Disable aberration for oval shapes
     ior: 2.75,
     fresnel: 1,
     color: "white",
     transmission: 0,
-    thickness: 0.5,
+    thickness: isOval ? 0.3 : 0.5,            // Use a thinner profile for ovals
     roughness: 0,
-    clearcoat: 0.1,
-    clearcoatRoughness: 0.1,
+    clearcoat: isOval ? 0 : 0.1,              // Disable clearcoat for performance if oval
+    clearcoatRoughness: isOval ? 0 : 0.1,
     attenuationDistance: 1,
     attenuationColor: "#ffffff",
   };
@@ -277,23 +280,22 @@ function Diamond(props: any) {
   const { factor: perfFactor } = usePerformance();
   const baseBlur = isMobile ? 0.8 : 0.4;
   const adjustedBlur = baseBlur + (1 - perfFactor) * 0.2;
+  const blurToUse = perfFactor < 0.7 ? adjustedBlur + 0.2 : adjustedBlur;
   
-  // NEW: Fallback for low performance devices. 
-  // When perfFactor is below 0.5, use a simpler material and optionally disable shadows.
   if (perfFactor < 0.5) {
     return (
       <group>
         <mesh
-          castShadow={false} // Disable shadows to improve performance further.
+          castShadow={false}
           geometry={props.geometry}
           position={props.position}
           rotation={props.rotation}
           scale={props.scale}
         >
           <meshStandardMaterial 
-            color="#ccc"       // A simple, neutral color
-            roughness={0.6}    // Adjust roughness as needed
-            metalness={0.2}    // Lower metalness keeps it simple
+            color="#ccc"
+            roughness={0.6}
+            metalness={0.2}
           />
         </mesh>
       </group>
@@ -314,8 +316,8 @@ function Diamond(props: any) {
           {...config} 
           toneMapped={false}
           // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
-          blur={adjustedBlur}
-          flatShading={perfFactor < 0.7} // Enable flat shading when performance is lower
+          blur={blurToUse}
+          flatShading={perfFactor < 0.7}
         />
       </mesh>
     </group>
@@ -445,6 +447,51 @@ function RingModel({ modelPath, selectedBandColor }: { modelPath: string, select
   );
 }
 
+function CameraLogger() {
+  // Camera logging has been removed.
+  return null;
+}
+
+function CameraPanner({ preTestProgress, onComplete }: { preTestProgress: number, onComplete: () => void }) {
+  const { camera } = useThree();
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [panningComplete, setPanningComplete] = useState(false);
+  const duration = 2; // pan duration in seconds
+  const spinSpeed = 0.1;  // slow spin: 0.1 radians per second
+
+  useEffect(() => {
+    if (preTestProgress >= 100 && startTime === null && !panningComplete) {
+      setStartTime(performance.now());
+    }
+  }, [preTestProgress, startTime, panningComplete]);
+
+  useFrame((state, delta) => {
+    if (!panningComplete && startTime !== null) {
+      const elapsed = (performance.now() - startTime) / 1000; // seconds elapsed
+      const t = Math.min(elapsed / duration, 1);
+      const startVec = new THREE.Vector3(22, 40, 23);
+      const endVec = new THREE.Vector3(22, 31, 23);
+      if (t < 1) {
+        const basePos = new THREE.Vector3().lerpVectors(startVec, endVec, t);
+        // Blend out the spin effect as t approaches 1
+        const effectiveSpinAngle = elapsed * spinSpeed * (1 - t);
+        const targetPos = basePos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), effectiveSpinAngle);
+        camera.position.lerp(targetPos, delta * 5);
+        camera.lookAt(0, 0, 0);
+      } else {
+        // When t is 1, smoothly lerp to the final endVec
+        camera.position.lerp(endVec, delta * 5);
+        if (camera.position.distanceTo(endVec) < 0.01) {
+          camera.position.copy(endVec);
+          setPanningComplete(true);
+          onComplete();
+        }
+      }
+    }
+  });
+  return null;
+}
+
 interface RingViewerProps {
   models: string[];
   selectedModel: string;
@@ -528,6 +575,9 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   // NEW: Lower light intensity based on the locked quality setting.
   const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : hdrIntensity;
 
+  // NEW: Add a state to control rendering of CameraPanner
+  const [cameraPannerComplete, setCameraPannerComplete] = useState(false);
+
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       
@@ -536,21 +586,22 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           position: "absolute",
           ...(isMobile 
             ? {
-                top: "20px",
-                right: "20px",
-                transform: "translateX(0)"
+                top: "10px",
+                right: "10px",
+                width: "fit-content",
+                maxWidth: "250px",
+                padding: "8px"
               }
             : {
                 bottom: "20px",
-                left: "20px"
+                left: "20px",
+                width: "260px",
+                padding: "20px"
               }
           ),
-          width: isMobile ? "90%" : "260px",
-          maxWidth: isMobile ? "200px" : "260px",
           background: "#dcd1c7",
           backdropFilter: "blur(10px)",
           color: "#000",
-          padding: isMobile ? "10px" : "20px",
           boxSizing: "border-box",
           zIndex: 10,
           borderRadius: "12px",
@@ -595,7 +646,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
             marginTop: isMobile ? "0" : "20px",
             display: "flex",
             flexDirection: isMobile ? "row" : "column",
-            gap: isMobile ? "10px" : "0",
+            gap: isMobile ? "6px" : "0",
             alignItems: isMobile ? "center" : "stretch"
           }}
         >
@@ -606,10 +657,11 @@ export default function RingViewer({ models, selectedModel, category }: RingView
               style={{
                 ...(isMobile 
                   ? {
-                      width: "30px",
-                      height: "30px",
+                      width: "28px", // Slightly smaller buttons
+                      height: "28px",
                       padding: 0,
-                      margin: 0
+                      margin: 0,
+                      borderWidth: "1px" // Thinner border
                     }
                   : {
                       display: "flex",
@@ -660,7 +712,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       {/* Unchanged: Canvas and its configuration */}
       <Canvas 
         dpr={computedDpr}
-        camera={{ position: [22, 31, 23], fov: 50 }}
+        camera={{ position: [22, 40, 23], fov: 50 }}
         gl={{ antialias: !lockedLowFps, precision: isSafari ? "mediump" : "highp" }}
         style={{ background: 'white' }}
         onCreated={(state) => {
@@ -693,14 +745,26 @@ export default function RingViewer({ models, selectedModel, category }: RingView
             ms={500}
             iterations={5}
             step={0.2}
+            staticFactor={
+              initialFps === null
+                ? 1
+                : initialFps < 30
+                  ? 0.3
+                  : initialFps < 50
+                    ? 0.6
+                    : 1
+            }
           >
             <RingModel key={selectedModel} modelPath={`/3d/${category}/${selectedModel}.glb`} selectedBandColor={selectedBandColor} />
           </PerformanceMonitor>
         </Suspense>
 
-        <OrbitControls enablePan={false} minDistance={15} maxDistance={50}  />
+        <OrbitControls enablePan={false} minDistance={15} maxDistance={50} enabled={cameraPannerComplete} />
         
         <Stats />
+        <CameraLogger />
+        {/* Only render CameraPanner if not complete */}
+        {!cameraPannerComplete && <CameraPanner preTestProgress={preTestProgress} onComplete={() => setCameraPannerComplete(true)} />}
 
       </Canvas>
       <div style={{
