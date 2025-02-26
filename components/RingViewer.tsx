@@ -15,6 +15,7 @@ import {
 import { useControls } from "leva";
 import React, { createContext, useContext, useState } from 'react';
 import { Leva } from "leva";
+import { CubeTextureLoader } from "three";
 
 declare global {
   interface Window {
@@ -212,11 +213,37 @@ function CombinedLoader({ preTestProgress }: { preTestProgress: number }) {
   );
 }
 
+// Add this helper hook to check if environment is loaded
+function useEnvironment() {
+  const { scene } = useThree();
+  const [ready, setReady] = useState(false);
+  
+  useEffect(() => {
+    // Check if environment exists initially
+    if (scene.environment && scene.environment.isTexture) {
+      setReady(true);
+    }
+    
+    // Set up an observer to detect when the environment is set
+    const checkInterval = setInterval(() => {
+      if (scene.environment && scene.environment.isTexture) {
+        setReady(true);
+        clearInterval(checkInterval);
+      }
+    }, 100);
+    
+    return () => clearInterval(checkInterval);
+  }, [scene]);
+  
+  return ready;
+}
+
 function Diamond(props: any) {
   const { scene } = useThree();
   const { isOval = false } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const environmentReady = useEnvironment();
   
   // Optimized configuration for the refraction material.
   const config = {
@@ -234,8 +261,8 @@ function Diamond(props: any) {
     attenuationColor: "#ffffff",
   };
 
-  // Fall back to a simpler material when performance is low
-  if (perfFactor < 0.5) {
+  // Always use standard material if environment is not ready
+  if (!environmentReady || perfFactor < 0.5) {
     return (
       <mesh
         castShadow={false}
@@ -502,9 +529,13 @@ function CameraPanner({ preTestProgress, onComplete }: { preTestProgress: number
   const [panningComplete, setPanningComplete] = useState(false);
   const duration = 2; // pan duration in seconds
   const spinSpeed = 0.1;  // slow spin: 0.1 radians per second
-  const distanceThreshold = 0.005; // threshold to consider animation complete
-  const endPos = useRef(new THREE.Vector3(22, 31, 23));
-  const lastPos = useRef(new THREE.Vector3());
+  
+  // Create refs for the start and end camera positions
+  const startVec = useRef(new THREE.Vector3(22, 40, 23));
+  const endVec = useRef(new THREE.Vector3(22, 31, 23));
+  
+  // Track if we're in the final smoothing phase
+  const isInFinalPhase = useRef(false);
 
   useEffect(() => {
     if (preTestProgress >= 100 && startTime === null && !panningComplete) {
@@ -516,27 +547,31 @@ function CameraPanner({ preTestProgress, onComplete }: { preTestProgress: number
     if (!panningComplete && startTime !== null) {
       const elapsed = (performance.now() - startTime) / 1000; // seconds elapsed
       const t = Math.min(elapsed / duration, 1);
-      const startVec = new THREE.Vector3(22, 40, 23);
       
-      // Save last position for smooth transitions
-      lastPos.current.copy(camera.position);
+      // If we've reached the time threshold but haven't set final phase yet
+      if (t >= 1 && !isInFinalPhase.current) {
+        isInFinalPhase.current = true;
+      }
       
-      // Calculate base position with lerp
-      const basePos = new THREE.Vector3().lerpVectors(startVec, endPos.current, t);
-      
-      // Apply spin effect - fades out as t approaches 1
-      const effectiveSpinAngle = elapsed * spinSpeed * Math.max(0, 1 - t);
-      const targetPos = basePos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), effectiveSpinAngle);
-      
-      // Apply smooth movement with consistent damping factor
-      camera.position.lerp(targetPos, delta * 5);
-      camera.lookAt(0, 0, 0);
-      
-      // Check if we're close enough to the final position to complete
-      if (t >= 1 && camera.position.distanceTo(endPos.current) < distanceThreshold) {
-        // Don't snap to exact position - just let it be close enough
-        setPanningComplete(true);
-        onComplete();
+      if (!isInFinalPhase.current) {
+        // Standard panning phase with spin
+        const basePos = new THREE.Vector3().lerpVectors(startVec.current, endVec.current, t);
+        // Blend out the spin effect as t approaches 1
+        const effectiveSpinAngle = elapsed * spinSpeed * (1 - t);
+        const targetPos = basePos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), effectiveSpinAngle);
+        camera.position.lerp(targetPos, delta * 5);
+        camera.lookAt(0, 0, 0);
+      } else {
+        // Final smoothing phase - ensure we reach the exact end position
+        camera.position.lerp(endVec.current, delta * 3); // Slightly slower for smoother finish
+        camera.lookAt(0, 0, 0);
+        
+        // Only complete when we're very close to the final position
+        if (camera.position.distanceTo(endVec.current) < 0.005) {
+          // Don't snap to exact position - let it finish the very small remaining lerp naturally
+          setPanningComplete(true);
+          onComplete();
+        }
       }
     }
   });
@@ -947,14 +982,14 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           }
         }}
       >
-        <Environment 
-          files="/studio.hdr" 
-          background={false}
-          environmentIntensity={effectiveEnvironmentIntensity}
-          blur={0}
-        />
-
         <Suspense fallback={null}>
+          <Environment 
+            files="/studio.hdr" 
+            background={false}
+            environmentIntensity={effectiveEnvironmentIntensity}
+            blur={0}
+          />
+          
           <PerformanceMonitor
             bounds={(fps) => [50, 60]}
             ms={500}
