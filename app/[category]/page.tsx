@@ -16,14 +16,7 @@ export default function CategoryPage({ params }: { params: { category: string } 
   }
   
   return (
-    <div style={{
-      backgroundColor: "#FFF",
-      minHeight: "100vh",
-      backgroundImage: "url('/images/diamond-bg.jpg')",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundAttachment: "fixed",
-    }}>
+    <div className="page-container">
       <div style={{
         display: "flex",
         justifyContent: "center",
@@ -39,32 +32,36 @@ export default function CategoryPage({ params }: { params: { category: string } 
           />
         </Link>
       </div>
-      <h1 style={{
-        textAlign: "center",
-        fontFamily: "var(--font-family)",
-        margin: "0",
-        color: "#4a3f35",
-        backgroundColor: "#dcd1c7",
-        fontSize: "3.5rem",
-        fontWeight: "300",
-        letterSpacing: "0.2em",
-        textTransform: "uppercase",
-        padding: "40px 0",
-      }}>
-        {category}
-      </h1>
+      <div className="title-container">
+        <h1 className="title-text">
+          {category}
+        </h1>
+      </div>
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
         gap: "15px",
-        width: "100%",
+        width: "80vw",
         maxWidth: "1200px",
         padding: "10px",
         margin: "0 auto",
       }}>
         {models.map((model, index) => {
-          const gifSrc = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
+          const gifPath = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
           const modelSlug = model.replace(".glb", "");
+          
+          // Function to check if file exists (this runs on server)
+          const gifExists = (() => {
+            try {
+              const fullPath = join(process.cwd(), 'public', 'gifs', category, model.replace(".glb", ".gif"));
+              return statSync(fullPath).isFile();
+            } catch {
+              return false;
+            }
+          })();
+
+          const imageSrc = gifExists ? gifPath : "/ring-placeholder.gif";
+
           return (
             <Link key={index} href={`/${category}/${modelSlug}`}> 
               <HoverableDiv
@@ -77,9 +74,15 @@ export default function CategoryPage({ params }: { params: { category: string } 
                 }}
               >
                 <img 
-                  src={gifSrc} 
+                  src={imageSrc}
                   alt={model} 
-                  style={{ width: "100%", height: "auto", objectFit: "cover", borderRadius: "10px" }} 
+                  style={{ 
+                    width: "100%", 
+                    height: "auto", 
+                    objectFit: "cover", 
+                    borderRadius: "10px",
+                    aspectRatio: "1"
+                  }} 
                 />
                 <p style={{
                   marginTop: "10px",

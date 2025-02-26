@@ -39,8 +39,12 @@ export default function ModelViewerPage({
           top: "20px",
           left: "20px",
           zIndex: 20,
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gridTemplateRows: "auto auto",
+          gap: "10px",
+          width: "200px"
         }}
-        className="flex flex-col gap-1"
       >
         <Link href="/" className="block">
           <button className="w-full"

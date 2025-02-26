@@ -36,14 +36,7 @@ export default function Home() {
   const availableCategories = Object.keys(categorizedModels);
 
   return (
-    <div style={{
-      backgroundColor: "#FFF",
-      minHeight: "100vh",
-      backgroundImage: "url('/images/diamond-bg.jpg')",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundAttachment: "fixed",
-    }}>
+    <div className="page-container">
       <div style={{
         display: "flex",
         justifyContent: "center",
@@ -59,20 +52,11 @@ export default function Home() {
           />
         </Link>
       </div>
-      <h1 style={{
-        textAlign: "center",
-        fontFamily: "var(--font-family)",
-        margin: "0",
-        color: "#4a3f35",
-        backgroundColor: "#dcd1c7",
-        fontSize: "3.5rem",
-        fontWeight: "300",
-        letterSpacing: "0.2em",
-        textTransform: "uppercase",
-        padding: "40px 0",
-      }}>
-        Explore Our Collection
-      </h1>
+      <div className="title-container">
+        <h1 className="title-text">
+          Explore Our Collection
+        </h1>
+      </div>
       <div style={{
         display: "flex",
         flexWrap: "wrap",

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { motion, useAnimation, useMotionValue } from "framer-motion";
@@ -126,7 +126,20 @@ function CategorySlider({ category, models }: { category: string; models: string
             }}
           >
             {duplicatedModels.map((model, index) => {
-              const gifSrc = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
+              const gifPath = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
+              
+              // Function to check if file exists (this runs on client)
+              const [imageExists, setImageExists] = useState(true);
+              
+              useEffect(() => {
+                const img = new Image();
+                img.onload = () => setImageExists(true);
+                img.onerror = () => setImageExists(false);
+                img.src = gifPath;
+              }, [gifPath]);
+
+              const imageSrc = imageExists ? gifPath : "/ring-placeholder.gif";
+              
               return (
                 <Link key={index} href={`/${category}/${model.replace(".glb", "")}`}>
                   <motion.div
@@ -149,7 +162,7 @@ function CategorySlider({ category, models }: { category: string; models: string
                     }}
                   >
                     <img
-                      src={gifSrc}
+                      src={imageSrc}
                       alt={model}
                       style={{ 
                         width: "100%", 
@@ -161,7 +174,7 @@ function CategorySlider({ category, models }: { category: string; models: string
                     <p style={{
                       textAlign: "center",
                       marginTop: "15px",
-                      color: "#8b7355", // Warm brown
+                      color: "#8b7355",
                       fontSize: "1.1rem",
                       fontWeight: "300",
                       letterSpacing: "0.05em"
@@ -190,15 +203,7 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 1 }}
-      style={{
-        backgroundColor: "#FFF",
-        minHeight: "100vh",
-        // padding: "40px 20px",
-        backgroundImage: "url('/images/diamond-bg.jpg')", // Add a dark, elegant background image
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-      }}
+      className="page-container"
     >
       <div style={{
         display: "flex",
@@ -208,34 +213,23 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
         padding: "20px 0"
       }}>
         <Link href="https://masinadiamonds.com" passHref>
-            <img 
-              src="//masinadiamonds.com/cdn/shop/files/366327210_768017625324629_3600285306584146928_n_1.jpg?v=1697432446&width=380"
-              alt="Masina Diamonds"
-              style={{
-                width: "200px",
-                height: "auto",
-                objectFit: "contain"
-              }}
-            />
+          <img 
+            src="//masinadiamonds.com/cdn/shop/files/366327210_768017625324629_3600285306584146928_n_1.jpg?v=1697432446&width=380"
+            alt="Masina Diamonds"
+            style={{
+              width: "200px",
+              height: "auto",
+              objectFit: "contain"
+            }}
+          />
         </Link>
       </div>
 
-      <h1
-        style={{
-          textAlign: "center",
-          fontFamily: "var(--font-family)",
-          margin: "0",
-          color: "#4a3f35", // Darker warm brown
-          backgroundColor: "#dcd1c7",
-          fontSize: "3.5rem",
-          fontWeight: "300",
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          padding: "40px 0"
-        }}
-      >
-        Explore Our Collection
-      </h1>
+      <div className="title-container">
+        <h1 className="title-text">
+          Explore Our Collection
+        </h1>
+      </div>
 
       {Object.entries(categorizedModels).map(([category, models]) => (
         <CategorySlider key={category} category={category} models={models} />
@@ -244,10 +238,10 @@ export default function Dashboard({ categorizedModels = {} }: DashboardProps) {
       <div style={{
         textAlign: "center",
         padding: "40px 20px",
-        color: "#8b7355", // Warm brown
+        color: "#8b7355",
         borderTop: "1px solid rgba(139,115,85,0.2)",
         marginTop: "60px",
-        backgroundColor: "#f5f0eb" // Light warm gray
+        backgroundColor: "#f5f0eb"
       }}>
         <p style={{
           fontSize: "1.2rem",
