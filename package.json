@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3002",
-    "prebuild": "node scripts/generate-ring-images.js",
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",

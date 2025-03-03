@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { GoogleAnalytics } from '@next/third-parties/google'
+import type { Viewport } from 'next'
 
 export const metadata: Metadata = {
   title: "Masina Diamonds 3D Viewer",
@@ -11,6 +12,13 @@ export const metadata: Metadata = {
     maximumScale: 1,
     userScalable: false,
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
