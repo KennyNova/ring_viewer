@@ -372,7 +372,7 @@ function RingModel({
 
   const bandMaterials = {
     'Yellow Gold': { color: '#ffdc73', metalness: 1, roughness: 0.2 },
-    'Rose Gold': { color: '#d1b0aa', metalness: 1, roughness: 0.2 },
+    'Rose Gold': { color:'#d5927a', metalness: 1, roughness: 0.2 }, // Use the color from Leva
     'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
     'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
   };
