@@ -9,7 +9,16 @@ services:
       - "3003:3002"
     environment:
       - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
     # Uncomment the following lines if you need to mount volumes
     # volumes:
     #   - ./public:/app/public 

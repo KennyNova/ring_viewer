@@ -1,6 +1,12 @@
 # Base image
 FROM node:20-alpine AS base
 
+# Set npm configuration for better performance
+ENV NODE_ENV=production
+ENV NPM_CONFIG_LOGLEVEL=error
+ENV NPM_CONFIG_FETCH_TIMEOUT=300000
+ENV NPM_CONFIG_FETCH_RETRIES=3
+
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
@@ -8,8 +14,11 @@ WORKDIR /app
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci --legacy-peer-deps
+# Install dependencies with production flag and increased network timeout
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+    && npm config set network-timeout 300000 \
+    && npm ci --only=production --legacy-peer-deps \
+    && apk del .build-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -18,9 +27,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Next.js collects anonymous telemetry data about general usage
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line to disable telemetry during the build
-# ENV NEXT_TELEMETRY_DISABLED 1
+# Disable telemetry during the build
+ENV NEXT_TELEMETRY_DISABLED 1
 
 # Build the application
 RUN npm run build
@@ -32,12 +40,11 @@ WORKDIR /app
 ENV NODE_ENV production
 ENV PORT 3002
 ENV HOSTNAME 0.0.0.0
-# Uncomment the following line to disable telemetry during runtime
-# ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED 1
 
 # Create a non-root user to run the app
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
