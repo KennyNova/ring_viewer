@@ -1,6 +1,6 @@
 {
   "build": {
-    "timeout": 1800,
+    "timeout": 3600,
     "env": {
       "NODE_ENV": "production",
       "NEXT_TELEMETRY_DISABLED": "1"

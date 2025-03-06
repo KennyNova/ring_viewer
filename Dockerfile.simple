@@ -9,17 +9,17 @@ ENV NODE_ENV=production
 ENV PORT=3002
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NPM_CONFIG_LOGLEVEL=error
 
-# Copy package files
-COPY package.json package-lock.json .npmrc ./
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
 
-# Install dependencies
-RUN apk add --no-cache --virtual .build-deps python3 make g++ \
-    && npm config set fetch-timeout 300000 \
+# Copy package files first (for better caching)
+COPY package.json package-lock.json ./
+
+# Install dependencies with specific npm config
+RUN npm config set fetch-timeout 300000 \
     && npm config set fetch-retries 3 \
-    && npm ci --only=production --legacy-peer-deps \
-    && apk del .build-deps
+    && npm ci --legacy-peer-deps
 
 # Copy application code
 COPY . .
