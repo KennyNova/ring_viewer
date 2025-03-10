@@ -6,12 +6,6 @@ import type { Viewport } from 'next'
 export const metadata: Metadata = {
   title: "Masina Diamonds 3D Viewer",
   description: "Interactive 3D jewelry viewer for Masina Diamonds",
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
 };
 
 export const viewport: Viewport = {
