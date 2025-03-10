@@ -2,6 +2,7 @@ import { readdirSync, statSync } from "fs";
 import { join } from "path";
 import Link from "next/link";
 import HoverableDiv from "@/components/HoverableDiv";
+import RandomRingButton from '@/components/RandomRingButton';
 
 // Preload HDR file so it's cached when the user selects a model
 export const metadata = {
@@ -92,6 +93,9 @@ export default function Home() {
           </Link>
         ))}
       </div>
+      
+      {/* Use the new RandomRingButton which forces a new random selection each time */}
+      <RandomRingButton />
     </div>
   );
 }

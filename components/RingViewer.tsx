@@ -243,6 +243,13 @@ function Diamond(props: any) {
   const { isOval = false } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const isSafari =
+    typeof navigator !== "undefined" &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isIOS = 
+    typeof navigator !== "undefined" &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const environmentReady = useEnvironment();
   
   // Optimized configuration for the refraction material.
@@ -262,7 +269,7 @@ function Diamond(props: any) {
   };
 
   // Always use standard material if environment is not ready
-  if (!environmentReady || perfFactor < 0.5) {
+  if (!environmentReady || perfFactor < 0.5 || isIOS) {
     return (
       <mesh
         castShadow={false}
@@ -614,6 +621,10 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   const isSafari =
     typeof navigator !== "undefined" &&
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isIOS = 
+    typeof navigator !== "undefined" &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   
   // Add the usePerformance hook to get the factor value
   const { factor } = usePerformance();
@@ -669,8 +680,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
 
   // Compute quality settings based on measured performance
   const lockedLowFps = initialFps !== null ? initialFps < 30 : false;
-  const computedDpr = lockedLowFps ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
-  const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : 2.2;
+  const computedDpr = lockedLowFps || isIOS ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
+  const effectiveEnvironmentIntensity = lockedLowFps || isIOS ? 1.5 : 2.2;
 
   // Handle accent band detection
   const handleAccentBandDetected = (detected: boolean) => {
@@ -963,11 +974,16 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       <Canvas 
         dpr={computedDpr}
         camera={{ position: [22, 40, 23], fov: 50 }}
-        gl={{ antialias: !lockedLowFps, precision: isSafari ? "mediump" : "highp" }}
+        gl={{ 
+          antialias: !(lockedLowFps || isIOS),
+          precision: isSafari || isIOS ? "mediump" : "highp",
+          powerPreference: "low-power",
+          failIfMajorPerformanceCaveat: false
+        }}
         style={{ background: 'white' }}
         onCreated={(state) => {
           const { gl } = state;
-          if (isSafari) {
+          if (isSafari || isIOS) {
             const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
             if (glContext) {
               const originalGetShaderPrecisionFormat = glContext.getShaderPrecisionFormat.bind(glContext);
@@ -998,7 +1014,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
             staticFactor={
               initialFps === null
                 ? 1
-                : initialFps < 30
+                : initialFps < 30 || isIOS
                   ? 0.3
                   : initialFps < 50
                     ? 0.6
