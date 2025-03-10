@@ -853,8 +853,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
                 style={{ 
                   display: "flex", 
                   background: "#ab9580", 
-                  borderRadius: "16px",
-                  padding: "2px",
+                  borderRadius: "14px",
+                  padding: "3px 6px",
                   marginBottom: "8px",
                   width: "100%"
                 }}
@@ -895,6 +895,37 @@ export default function RingViewer({ models, selectedModel, category }: RingView
                 </button>
               </div>
             )}
+            {/* Mobile indicator for selected band color */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              {/* Determine the current selected band name and its color hex */}
+              {(() => {
+                const currentSelectedName = activeBandSelection === 'primary' ? selectedBandColor : selectedAccentBandColor;
+                const currentOption = bandOptions.find(band => band.name === currentSelectedName);
+                const currentColorHex = currentOption ? currentOption.color : '#000';
+                return (
+                  <>
+                    <div style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      background: currentColorHex,
+                      marginRight: '6px'
+                    }}></div>
+                    <span style={{
+                      color: '#8b7355',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}>
+                      {currentSelectedName}
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         )}
 
