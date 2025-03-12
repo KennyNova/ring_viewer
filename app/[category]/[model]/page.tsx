@@ -2,15 +2,6 @@ import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import RingViewer from "@/components/RingViewer";
-// // Dynamically import the client-side RingViewer
-// const RingViewer = dynamic(() => import("@/components/RingViewer"), {
-//   ssr: false,
-//   loading: () => (
-//     <div className="min-h-screen flex items-center justify-center">
-//       Loading RingViewer...
-//     </div>
-//   ),
-// });
 
 export default function ModelViewerPage({
   params,

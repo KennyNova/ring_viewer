@@ -243,14 +243,28 @@ function Diamond(props: any) {
   const { isOval = false } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const isSafari =
-    typeof navigator !== "undefined" &&
-    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  const isIOS = 
-    typeof navigator !== "undefined" &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const environmentReady = useEnvironment();
+  const materialRef = useRef<any>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  
+  // Add this to expose error to parent component
+  useEffect(() => {
+    if (errorMsg && typeof window !== 'undefined' && window.parent) {
+      try {
+        // Create a global variable to store errors
+        (window as any).__DIAMOND_ERRORS = (window as any).__DIAMOND_ERRORS || [];
+        (window as any).__DIAMOND_ERRORS.push(errorMsg);
+        
+        // Try to dispatch an event that can be listened for
+        window.dispatchEvent(new CustomEvent('diamond-error', { 
+          detail: { message: errorMsg, time: new Date().toISOString() } 
+        }));
+      } catch (e) {
+        console.error("Failed to communicate error:", e);
+      }
+    }
+  }, [errorMsg]);
   
   // Optimized configuration for the refraction material.
   const config = {
@@ -268,8 +282,118 @@ function Diamond(props: any) {
     attenuationColor: "#ffffff",
   };
 
-  // Always use standard material if environment is not ready
-  if (!environmentReady || perfFactor < 0.5 || isIOS) {
+  // Log any errors with the material
+  useEffect(() => {
+    if (materialRef.current) {
+      const checkForErrors = () => {
+        if (materialRef.current) {
+          try {
+            // Check if material was correctly initialized
+            if (!materialRef.current.envMap) {
+              console.error("MeshRefractionMaterial: Missing environment map");
+              setErrorMsg("Missing environment map");
+            }
+            
+            // Check WebGL context for errors
+            const gl = materialRef.current.__r3f?.gl;
+            if (gl) {
+              const glError = gl.getError?.();
+              if (glError !== gl.NO_ERROR && glError !== 0) {
+                console.error(`WebGL Error: ${glError}`);
+                setErrorMsg(`WebGL Error: ${glError}`);
+              }
+              
+              // Check for specific iOS shader errors
+              try {
+                const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
+                if (glContext) {
+                  // Try to create a simple test shader to check if shaders work at all
+                  const testVertexShader = glContext.createShader(glContext.VERTEX_SHADER);
+                  if (!testVertexShader) {
+                    console.error("Failed to create test vertex shader");
+                    setErrorMsg("Failed to create vertex shader");
+                    return;
+                  }
+                  
+                  const simpleVertexCode = `
+                    attribute vec4 position;
+                    void main() {
+                      gl_Position = position;
+                    }
+                  `;
+                  
+                  glContext.shaderSource(testVertexShader, simpleVertexCode);
+                  glContext.compileShader(testVertexShader);
+                  
+                  if (!glContext.getShaderParameter(testVertexShader, glContext.COMPILE_STATUS)) {
+                    const error = glContext.getShaderInfoLog(testVertexShader);
+                    console.error("Test vertex shader compilation failed:", error);
+                    setErrorMsg(`Shader compilation test failed: ${error}`);
+                  }
+                  
+                  // Clean up test shader
+                  glContext.deleteShader(testVertexShader);
+                }
+              } catch (shaderErr) {
+                console.error("Error testing shader compilation:", shaderErr);
+              }
+            }
+            
+            // Check if shader compilation failed
+            if (materialRef.current.program) {
+              const program = materialRef.current.program;
+              console.log("Shader program status:", program);
+            }
+            
+            // Check for shader compilation errors
+            if (meshRef.current?.material) {
+              // Use type assertion to access internal properties
+              const material = meshRef.current.material as any;
+              
+              if (material.program) {
+                if (!material.program.isCompiled) {
+                  console.error("Shader failed to compile:", material.program.diagnostics);
+                  setErrorMsg(`Shader compilation error: ${
+                    material.program.diagnostics?.fragmentShader || 'Unknown'
+                  }`);
+                }
+                
+                // Log shader info if available
+                if (material.fragmentShader) {
+                  console.log("Fragment shader length:", material.fragmentShader.length);
+                }
+                
+                // Check for null vertex shader specifically
+                if (material.vertexShader === null || material.vertexShader === undefined) {
+                  console.error("Null vertex shader detected");
+                  setErrorMsg("Null vertex shader detected");
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Error in MeshRefractionMaterial:", err);
+            setErrorMsg(err instanceof Error ? err.message : String(err));
+          }
+        }
+      };
+      
+      // Check immediately and after a short delay
+      checkForErrors();
+      const timer = setTimeout(checkForErrors, 500);
+      const timer2 = setTimeout(checkForErrors, 2000); // Another check after the material has had time to compile
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(timer2);
+      };
+    }
+  }, []);
+
+  // Always use standard material if environment is not ready or performance is too low
+  if (!environmentReady || perfFactor < 0.5 || errorMsg) {
+    // Log why we're falling back
+    console.log(`Using fallback material because: ${!environmentReady ? 'Environment not ready' : 
+      perfFactor < 0.5 ? 'Performance too low' : `Error: ${errorMsg}`}`);
+      
     return (
       <mesh
         castShadow={false}
@@ -294,19 +418,32 @@ function Diamond(props: any) {
   
   return (
     <mesh
+      ref={meshRef}
       castShadow
       geometry={props.geometry}
       position={props.position}
       rotation={props.rotation}
       scale={props.scale}
+      onUpdate={(self) => {
+        // Log the mesh and material details when first updated
+        console.log("Diamond mesh updated:", self);
+        if (self.material) {
+          console.log("Material assigned:", self.material);
+        }
+      }}
     >
-      <MeshRefractionMaterial as any
+      <SafeMeshRefractionMaterial
+        ref={materialRef}
         envMap={scene.environment as THREE.CubeTexture}
         {...config} 
         toneMapped={false}
         // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
         blur={blurToUse}
         flatShading={perfFactor < 0.7}
+        onError={(error: any) => {
+          console.error("MeshRefractionMaterial error:", error);
+          setErrorMsg(error?.message || "Unknown error");
+        }}
       />
     </mesh>
   );
@@ -616,15 +753,84 @@ interface RingViewerProps {
 // Import the needed component from @react-three/drei
 import { MeshRefractionMaterial } from "@react-three/drei";
 
+// Create a safer version of MeshRefractionMaterial that handles errors
+function SafeMeshRefractionMaterial(props: any) {
+  const { onError, ...rest } = props;
+  const [hasError, setHasError] = useState(false);
+  
+  // Add a specific check for the null vertex shader error
+  useEffect(() => {
+    const handleGlobalErrors = (event: ErrorEvent) => {
+      // Check for the specific error message
+      if (event.message && (
+        event.message.includes("null is not acceptable for the gl vertex shader") ||
+        event.message.includes("null vertex shader") ||
+        event.message.includes("null shader")
+      )) {
+        console.error("Caught null vertex shader error:", event.message);
+        setHasError(true);
+        if (onError) onError({ message: "Null vertex shader error detected" });
+      }
+    };
+    
+    // Listen for global errors
+    window.addEventListener('error', handleGlobalErrors);
+    
+    return () => {
+      window.removeEventListener('error', handleGlobalErrors);
+    };
+  }, [onError]);
+  
+  // If we've detected an error, use a standard material instead
+  if (hasError) {
+    return (
+      <meshStandardMaterial
+        color="#ccc"
+        roughness={0.6}
+        metalness={0.2}
+      />
+    );
+  }
+  
+  // Otherwise, try to use the refraction material with error handling
+  try {
+    return (
+      <MeshRefractionMaterial
+        {...rest}
+        onError={(error: any) => {
+          console.error("MeshRefractionMaterial error:", error);
+          
+          // Check for null vertex shader in the error message
+          if (error && typeof error.message === 'string' && (
+            error.message.includes("null is not acceptable") ||
+            error.message.includes("null vertex shader") ||
+            error.message.includes("shader compilation failed")
+          )) {
+            console.error("Detected null vertex shader error");
+          }
+          
+          setHasError(true);
+          if (onError) onError(error);
+        }}
+      />
+    );
+  } catch (err) {
+    console.error("Error creating MeshRefractionMaterial:", err);
+    setHasError(true);
+    if (onError) onError(err instanceof Error ? err : new Error(String(err)));
+    
+    return (
+      <meshStandardMaterial
+        color="#ccc"
+        roughness={0.6}
+        metalness={0.2}
+      />
+    );
+  }
+}
+
 export default function RingViewer({ models, selectedModel, category }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const isSafari =
-    typeof navigator !== "undefined" &&
-    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  const isIOS = 
-    typeof navigator !== "undefined" &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   
   // Add the usePerformance hook to get the factor value
   const { factor } = usePerformance();
@@ -639,6 +845,38 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   const [showBandSelector, setShowBandSelector] = useState(true);
   const [hasAccentBand, setHasAccentBand] = useState(false);
   const [activeBandSelection, setActiveBandSelection] = useState<'primary' | 'accent'>('primary');
+  
+  // Add this to collect WebGL error information for debugging
+  const [glErrors, setGlErrors] = useState<string[]>([]);
+  const [diamondErrors, setDiamondErrors] = useState<string[]>([]);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [webGLInfo, setWebGLInfo] = useState<{[key: string]: any}>({});
+
+  // Listen for diamond errors
+  useEffect(() => {
+    const handleDiamondError = (event: any) => {
+      const error = event.detail?.message || "Unknown diamond error";
+      console.log("Diamond error event received:", error);
+      setDiamondErrors(prev => [...prev, error]);
+    };
+
+    window.addEventListener('diamond-error', handleDiamondError);
+    
+    // Also check for global errors every second
+    const interval = setInterval(() => {
+      if ((window as any).__DIAMOND_ERRORS && (window as any).__DIAMOND_ERRORS.length > 0) {
+        const newErrors = (window as any).__DIAMOND_ERRORS;
+        console.log("Found global diamond errors:", newErrors);
+        setDiamondErrors(prev => [...prev, ...newErrors]);
+        (window as any).__DIAMOND_ERRORS = [];
+      }
+    }, 1000);
+    
+    return () => {
+      window.removeEventListener('diamond-error', handleDiamondError);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Pre-test to measure device performance
   useEffect(() => {
@@ -680,8 +918,8 @@ export default function RingViewer({ models, selectedModel, category }: RingView
 
   // Compute quality settings based on measured performance
   const lockedLowFps = initialFps !== null ? initialFps < 30 : false;
-  const computedDpr = lockedLowFps || isIOS ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
-  const effectiveEnvironmentIntensity = lockedLowFps || isIOS ? 1.5 : 2.2;
+  const computedDpr = lockedLowFps ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
+  const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : 2.2;
 
   // Handle accent band detection
   const handleAccentBandDetected = (detected: boolean) => {
@@ -706,6 +944,12 @@ export default function RingViewer({ models, selectedModel, category }: RingView
     } else {
       setSelectedAccentBandColor(colorName);
     }
+  };
+
+  // Handle WebGL errors
+  const handleGlError = (error: string) => {
+    console.error("WebGL Error:", error);
+    setGlErrors(prev => [...prev, error]);
   };
 
   // Current selected color based on active band
@@ -1006,25 +1250,109 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         dpr={computedDpr}
         camera={{ position: [22, 40, 23], fov: 50 }}
         gl={{ 
-          antialias: !(lockedLowFps || isIOS),
-          precision: isSafari || isIOS ? "mediump" : "highp",
+          antialias: !(lockedLowFps),
+          precision: "highp",
           powerPreference: "low-power",
           failIfMajorPerformanceCaveat: false
         }}
         style={{ background: 'white' }}
         onCreated={(state) => {
           const { gl } = state;
-          if (isSafari || isIOS) {
-            const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
-            if (glContext) {
-              const originalGetShaderPrecisionFormat = glContext.getShaderPrecisionFormat.bind(glContext);
-              glContext.getShaderPrecisionFormat = (shaderType: any, precisionType: any) => {
-                const result = originalGetShaderPrecisionFormat(shaderType, precisionType);
-                if (result === null) {
-                  return { rangeMin: 0, rangeMax: 0, precision: 0 };
+          if (gl) {
+            // Log WebGL capabilities for debugging
+            try {
+              const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
+              if (glContext) {
+                console.log("WebGL Context obtained:", !!glContext);
+                
+                // Collect WebGL info
+                const glInfo: {[key: string]: any} = {
+                  contextType: (gl as any).isWebGL2 ? 'WebGL2' : 'WebGL1',
+                };
+                
+                // Log max texture size
+                const maxTextureSize = glContext.getParameter(glContext.MAX_TEXTURE_SIZE);
+                console.log("MAX_TEXTURE_SIZE:", maxTextureSize);
+                glInfo.maxTextureSize = maxTextureSize;
+                
+                // Log max cubemap texture size
+                const maxCubemapSize = glContext.getParameter(glContext.MAX_CUBE_MAP_TEXTURE_SIZE);
+                console.log("MAX_CUBE_MAP_TEXTURE_SIZE:", maxCubemapSize);
+                glInfo.maxCubemapSize = maxCubemapSize;
+                
+                // Log whether floating point textures are available
+                const floatTextureExt = glContext.getExtension('OES_texture_float');
+                console.log("OES_texture_float support:", !!floatTextureExt);
+                glInfo.floatTextureSupport = !!floatTextureExt;
+                
+                // Check for other important extensions
+                const extensions = [
+                  'WEBGL_depth_texture',
+                  'OES_texture_float_linear',
+                  'OES_texture_half_float',
+                  'OES_texture_half_float_linear',
+                  'OES_standard_derivatives',
+                  'OES_element_index_uint',
+                  'ANGLE_instanced_arrays'
+                ];
+                
+                glInfo.extensions = {};
+                extensions.forEach(ext => {
+                  const supported = !!glContext.getExtension(ext);
+                  console.log(`${ext} support:`, supported);
+                  glInfo.extensions[ext] = supported;
+                });
+                
+                // Log whether WEBGL_debug_renderer_info is available
+                const debugInfo = glContext.getExtension('WEBGL_debug_renderer_info');
+                if (debugInfo) {
+                  const vendor = glContext.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                  const renderer = glContext.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                  console.log("Vendor:", vendor);
+                  console.log("Renderer:", renderer);
+                  glInfo.vendor = vendor;
+                  glInfo.renderer = renderer;
                 }
-                return result;
-              };
+                
+                // Update state with WebGL info
+                setWebGLInfo(glInfo);
+                
+                // Set up error handling for WebGL
+                const originalGetError = glContext.getError;
+                glContext.getError = function() {
+                  const error = originalGetError.call(this);
+                  if (error !== glContext.NO_ERROR) {
+                    const errorMsg = (() => {
+                      switch(error) {
+                        case glContext.INVALID_ENUM: return "INVALID_ENUM";
+                        case glContext.INVALID_VALUE: return "INVALID_VALUE";
+                        case glContext.INVALID_OPERATION: return "INVALID_OPERATION";
+                        case glContext.INVALID_FRAMEBUFFER_OPERATION: return "INVALID_FRAMEBUFFER_OPERATION";
+                        case glContext.OUT_OF_MEMORY: return "OUT_OF_MEMORY";
+                        case glContext.CONTEXT_LOST_WEBGL: return "CONTEXT_LOST_WEBGL";
+                        default: return `Unknown error (${error})`;
+                      }
+                    })();
+                    handleGlError(errorMsg);
+                  }
+                  return error;
+                };
+                
+                // Ensure shaders can use precision as needed
+                const originalGetShaderPrecisionFormat = glContext.getShaderPrecisionFormat.bind(glContext);
+                glContext.getShaderPrecisionFormat = (shaderType: any, precisionType: any) => {
+                  const result = originalGetShaderPrecisionFormat(shaderType, precisionType);
+                  if (result === null) {
+                    console.warn(`Shader precision format not supported for shader: ${shaderType}, precision: ${precisionType}`);
+                    handleGlError(`Shader precision not supported: ${shaderType}/${precisionType}`);
+                    return { rangeMin: 0, rangeMax: 0, precision: 0 };
+                  }
+                  return result;
+                };
+              }
+            } catch (err) {
+              console.error("Error during WebGL initialization:", err);
+              handleGlError(String(err));
             }
           }
         }}
@@ -1045,7 +1373,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
             staticFactor={
               initialFps === null
                 ? 1
-                : initialFps < 30 || isIOS
+                : initialFps < 30
                   ? 0.3
                   : initialFps < 50
                     ? 0.6
@@ -1078,6 +1406,223 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           />
         )}
       </Canvas>
+
+      {/* WebGL Error display for debugging */}
+      {glErrors.length > 0 && (
+        <div style={{
+          position: "absolute",
+          bottom: "60px",
+          right: "10px",
+          maxWidth: "400px",
+          maxHeight: "200px",
+          overflow: "auto",
+          background: "rgba(0, 0, 0, 0.85)",
+          color: "#ff4040",
+          padding: "10px",
+          borderRadius: "5px",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          zIndex: 1000
+        }}>
+          <strong>WebGL Errors:</strong>
+          <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+            {glErrors.map((error, i) => (
+              <li key={i}>{error}</li>
+            ))}
+          </ul>
+          <button 
+            onClick={() => setGlErrors([])} 
+            style={{
+              background: "#333",
+              border: "none",
+              color: "white",
+              padding: "3px 8px",
+              borderRadius: "3px",
+              cursor: "pointer"
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Diamond Error display for debugging */}
+      {diamondErrors.length > 0 && (
+        <div style={{
+          position: "absolute",
+          top: "60px",
+          left: "10px",
+          maxWidth: "400px",
+          maxHeight: "200px",
+          overflow: "auto",
+          background: "rgba(0, 0, 0, 0.85)",
+          color: "#ff4040",
+          padding: "10px",
+          borderRadius: "5px",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          zIndex: 1000
+        }}>
+          <strong>Diamond Errors:</strong>
+          <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+            {diamondErrors.map((error, i) => (
+              <li key={i}>{error}</li>
+            ))}
+          </ul>
+          <button 
+            onClick={() => setDiamondErrors([])} 
+            style={{
+              background: "#333",
+              border: "none",
+              color: "white",
+              padding: "3px 8px",
+              borderRadius: "3px",
+              cursor: "pointer"
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Debug Panel Toggle */}
+      <button
+        onClick={() => setShowDebugPanel(!showDebugPanel)}
+        style={{
+          position: "absolute",
+          top: "10px",
+          right: "10px",
+          background: "#333",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+          padding: "5px 10px",
+          zIndex: 1000,
+          cursor: "pointer"
+        }}
+      >
+        {showDebugPanel ? "Hide Debug" : "Show Debug"}
+      </button>
+
+      {/* Debug Panel */}
+      {showDebugPanel && (
+        <div style={{
+          position: "absolute",
+          top: "50px",
+          right: "10px",
+          width: "300px",
+          maxHeight: "80vh",
+          overflow: "auto",
+          background: "rgba(0, 0, 0, 0.85)",
+          color: "white",
+          padding: "15px",
+          borderRadius: "5px",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          zIndex: 1000
+        }}>
+          <h3 style={{ margin: "0 0 10px 0", color: "#0ff" }}>Debug Information</h3>
+          
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Device Info:</strong>
+            <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+              <li>Mobile: {isMobile ? "Yes" : "No"}</li>
+              <li>Initial FPS: {initialFps?.toFixed(1) || "Measuring..."}</li>
+              <li>Performance Factor: {factor.toFixed(2)}</li>
+              <li>DPR: {typeof computedDpr === 'number' ? computedDpr : computedDpr.join('-')}</li>
+              <li>User Agent: {typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}</li>
+            </ul>
+          </div>
+          
+          <div style={{ marginBottom: "10px" }}>
+            <strong>WebGL Info:</strong>
+            {Object.keys(webGLInfo).length > 0 ? (
+              <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+                <li>Context: {webGLInfo.contextType}</li>
+                <li>Vendor: {webGLInfo.vendor || 'Unknown'}</li>
+                <li>Renderer: {webGLInfo.renderer || 'Unknown'}</li>
+                <li>Max Texture Size: {webGLInfo.maxTextureSize}</li>
+                <li>Max Cubemap Size: {webGLInfo.maxCubemapSize}</li>
+                <li>Float Texture: {webGLInfo.floatTextureSupport ? 'Yes' : 'No'}</li>
+                <li>
+                  Extensions:
+                  {webGLInfo.extensions && (
+                    <ul style={{ paddingLeft: "15px" }}>
+                      {Object.entries(webGLInfo.extensions).map(([ext, supported]: [string, any]) => (
+                        <li key={ext} style={{ color: supported ? '#0f0' : '#f00' }}>
+                          {ext}: {supported ? 'Yes' : 'No'}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              </ul>
+            ) : (
+              <p style={{ margin: "5px 0", color: "#f00" }}>WebGL info not available</p>
+            )}
+          </div>
+          
+          <div style={{ marginBottom: "10px" }}>
+            <strong>WebGL Errors ({glErrors.length}):</strong>
+            {glErrors.length > 0 ? (
+              <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+                {glErrors.slice(0, 3).map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+                {glErrors.length > 3 && <li>...and {glErrors.length - 3} more</li>}
+              </ul>
+            ) : (
+              <p style={{ margin: "5px 0", color: "#0f0" }}>No WebGL errors</p>
+            )}
+          </div>
+          
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Diamond Errors ({diamondErrors.length}):</strong>
+            {diamondErrors.length > 0 ? (
+              <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+                {diamondErrors.slice(0, 3).map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+                {diamondErrors.length > 3 && <li>...and {diamondErrors.length - 3} more</li>}
+              </ul>
+            ) : (
+              <p style={{ margin: "5px 0", color: "#0f0" }}>No Diamond errors</p>
+            )}
+          </div>
+          
+          <button 
+            onClick={() => {
+              setGlErrors([]);
+              setDiamondErrors([]);
+            }} 
+            style={{
+              background: "#333",
+              border: "none",
+              color: "white",
+              padding: "5px 10px",
+              borderRadius: "3px",
+              cursor: "pointer",
+              marginRight: "10px"
+            }}
+          >
+            Clear All Errors
+          </button>
+          
+          <button 
+            onClick={() => setShowDebugPanel(false)} 
+            style={{
+              background: "#333",
+              border: "none",
+              color: "white",
+              padding: "5px 10px",
+              borderRadius: "3px",
+              cursor: "pointer"
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
 
       {/* Disclaimer text */}
       <div style={{
