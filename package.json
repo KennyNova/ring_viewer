@@ -3,12 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",
-    "generate-images": "node scripts/generate-ring-images.js",
-    "generate-simple-images": "node scripts/simplify-generate-images.js"
+    "generate-images": "node scripts/generate-ring-images.js"
   },
   "dependencies": {
     "@next/third-parties": "^15.1.7",
