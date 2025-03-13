@@ -16,6 +16,8 @@ import { useControls } from "leva";
 import React, { createContext, useContext, useState } from 'react';
 import { Leva } from "leva";
 import { CubeTextureLoader } from "three";
+import Image from 'next/image';
+import { CombinedLoader } from './DiamondLoader';
 
 declare global {
   interface Window {
@@ -164,52 +166,6 @@ export function PerformanceMonitor({
     <PerformanceContext.Provider value={{ factor }}>
       {children}
     </PerformanceContext.Provider>
-  );
-}
-
-function CombinedLoader({ preTestProgress }: { preTestProgress: number }) {
-  const { progress: modelProgress } = useProgress();
-  // Combine both progress values. Adjust these weights as desired.
-  const combined = 0.4 * preTestProgress + 0.6 * modelProgress;
-  if (combined >= 100) return null;
-  return (
-    <div style={{
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100vw",
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#111",
-      zIndex: 9999,
-      opacity: 0.95,
-      fontFamily: "monospace"
-    }}>
-      <div style={{
-        marginBottom: "1rem",
-        color: "#0ff",
-        fontSize: "1.5rem"
-      }}>
-        Loading {combined.toFixed(0)}%
-      </div>
-      <div style={{
-        width: "80%",
-        height: "8px",
-        background: "#333",
-        borderRadius: "4px",
-        overflow: "hidden"
-      }}>
-        <div style={{
-          height: "100%",
-          width: `${combined}%`,
-          background: "#0ff",
-          transition: "width 0.3s ease"
-        }} />
-      </div>
-    </div>
   );
 }
 

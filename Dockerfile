@@ -13,10 +13,12 @@ WORKDIR /app
 
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
+COPY .npmrc ./
 
 # Install dependencies with production flag and increased network timeout
 RUN apk add --no-cache --virtual .build-deps python3 make g++ \
-    && npm config set network-timeout 300000 \
+    && npm config set fetch-timeout 300000 \
+    && npm config set fetch-retries 3 \
     && npm ci --only=production --legacy-peer-deps \
     && apk del .build-deps
 
@@ -28,7 +30,7 @@ COPY . .
 
 # Next.js collects anonymous telemetry data about general usage
 # Disable telemetry during the build
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the application
 RUN npm run build
@@ -37,10 +39,10 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV PORT 3002
-ENV HOSTNAME 0.0.0.0
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV PORT=3002
+ENV HOSTNAME=0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create a non-root user to run the app
 RUN addgroup --system --gid 1001 nodejs && \
