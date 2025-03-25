@@ -1,0 +1,131 @@
+<style>
+    .product-icons {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 1px;
+        width: 100%;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    .product-block {
+        padding: 15px 10px;
+        border-style: solid;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Remove borders between adjacent cells */
+    .product-block:nth-child(1) {
+        border-width: 0 1px 1px 0 ;
+    }
+    
+    .product-block:nth-child(2) {
+        border-width: 0 0 1px 1px ;
+
+    }
+    
+    .product-block:nth-child(3) {
+        border-width: 1px 1px 0 0 ;
+
+    }
+    
+    .product-block:nth-child(4) {
+        border-width: 0 1px 1px 0 ;
+    }
+    
+    .sales-points {
+        text-align: left;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+    }
+    
+    .icon-and-text {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .icon {
+        width: 24px;
+        height: 24px;
+    }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 480px) {
+        .product-icons {
+            grid-template-columns: 1fr;
+            grid-template-rows: repeat(4, auto);
+        }
+        
+        .product-block:nth-child(1),
+        .product-block:nth-child(2),
+        .product-block:nth-child(3),
+        .product-block:nth-child(4) {
+            border: 1px solid #e8e8e8;
+            margin-bottom: 5px;
+        }
+    }
+</style>
+
+<div class="product-icons">
+    <div class="product-block product-block--sales-point">
+        <ul class="sales-points">
+            <li class="sales-point">
+                <span class="icon-and-text">
+                    <svg aria-hidden="true" focusable="false" role="presentation" class="icon icon-gift" viewBox="0 0 64 64"><path d="M9 20.23h46v8.68H9zm4.34 8.68h36.89v24.3H13.34zm14.48-8.25v32.98m8.09-32.76v32.98M20.52 11.43a3.73 3.73 0 0 0-.74 2.87 4.57 4.57 0 0 0 .8 2.27C22 18.09 25.15 20 32 20.23a12 12 0 0 0-2.43-7 7.52 7.52 0 0 0-5.66-3.12 4 4 0 0 0-3.39 1.32Z"></path><path d="M43.37 11.43a3.73 3.73 0 0 1 .74 2.87 4.48 4.48 0 0 1-.8 2.27c-1.42 1.52-4.57 3.41-11.42 3.66a12.08 12.08 0 0 1 2.43-7A7.56 7.56 0 0 1 40 10.14a4 4 0 0 1 3.37 1.29Z"></path></svg>
+                    <span>30 Day Free Returns</span>
+                </span>
+            </li>
+        </ul>
+    </div>
+    <div class="product-block product-block--sales-point">
+        <ul class="sales-points">
+            <li class="sales-point">
+                <span class="icon-and-text">
+                    <svg aria-hidden="true" focusable="false" role="presentation" class="icon icon-package" viewBox="0 0 64 64"><path d="M32 54.52 10 41.95v-19.9L32 9.48l22 12.57v19.9L32 54.52z"></path><path d="M32 54.52v-19.9l22-12.57M32 34.62 10 22.05m31.7-7.03L21 28.33v8.38"></path></svg>
+                    <span>Insured Shipping</span>
+                </span>
+            </li>
+        </ul>
+    </div>
+    <div class="product-block product-block--sales-point">
+        <ul class="sales-points">
+            <li class="sales-point">
+                <span class="icon-and-text">
+                    <svg aria-hidden="true" focusable="false" role="presentation" class="icon icon-shield" viewBox="0 0 64 64"><path d="M21.18 31.69 28.54 39l15.91-15.88"></path><path d="M53 12.54v15.24a31.41 31.41 0 0 1-3.7 14.95A25.46 25.46 0 0 1 32 56a25.46 25.46 0 0 1-17.3-13.27A31.41 31.41 0 0 1 11 27.78V12.54C24.88 13.67 32 8 32 8s7.12 5.67 21 4.54Z"></path></svg>
+                    <span>3 Year Warranty</span>
+                </span>
+            </li>
+        </ul>
+    </div>
+    <div class="product-block product-block--sales-point">
+        <ul class="sales-points">
+            <li class="sales-point">
+                <span class="icon-and-text">
+                    <svg aria-hidden="true" id="diamond-ring" focusable="false" role="presentation" class="icon cls-1 " viewBox="0 0 25 25">
+                    <style>
+                      .cls-1 {
+                        fill: none;
+                        stroke-width: 1px ;
+                        display:inline-block;
+                        height:20px;
+                        vertical-align:middle;
+                        width:20px;
+                      }
+                    </style>
+                    <circle class="cls-2" cx="15.92" cy="15.92" r="6.58"></circle>
+                    <polygon class="cls-2" points="11.63 10.91 10.91 11.63 6.62 11.63 5.91 9.48 9.48 5.91 11.63 6.62 11.63 10.91"></polygon>
+                    <line class="cls-2" x1="8.15" y1="0.5" x2="8.15" y2="3.37"></line>
+                    <line class="cls-2" x1="0.5" y1="8.15" x2="3.37" y2="8.15"></line>
+                    <line class="cls-2" x1="1.46" y1="1.46" x2="3.85" y2="3.85"></line>
+                  </svg>
+                    <span>Free Ring Resizing</span>
+                </span>
+            </li>
+        </ul>
+    </div>
+</div>
