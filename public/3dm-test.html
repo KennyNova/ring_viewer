@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3DM File Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        .test-list {
+            margin: 20px 0;
+            padding: 0;
+            list-style-type: none;
+        }
+        .test-list li {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .test-list a {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .test-list a:hover {
+            text-decoration: underline;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>3DM File Access Test</h1>
+    
+    <p>This page tests direct access to 3DM files to ensure they can be loaded correctly.</p>
+    
+    <ul class="test-list">
+        <li>
+            <a href="/3d/Solitaire/3dm.3dm" target="_blank">Test Direct Access to /3d/Solitaire/3dm.3dm</a>
+            (Should download or open the file)
+        </li>
+        <li>
+            <button onclick="fetchFile('/3d/Solitaire/3dm.3dm')">Test Fetch API Access</button>
+            (Tests if the file can be fetched with JavaScript)
+        </li>
+    </ul>
+    
+    <div class="result" id="result">Results will appear here...</div>
+    
+    <script>
+        async function fetchFile(path) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `Attempting to fetch: ${path}...`;
+            
+            try {
+                const response = await fetch(path);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const buffer = await response.arrayBuffer();
+                resultDiv.innerHTML = `Success! File fetched successfully.<br>
+                    Status: ${response.status}<br>
+                    Content-Type: ${response.headers.get('content-type')}<br>
+                    Size: ${buffer.byteLength} bytes`;
+            } catch (error) {
+                resultDiv.innerHTML = `Error fetching file: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html> 

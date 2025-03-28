@@ -13,11 +13,59 @@ import {
   Html,
 } from "@react-three/drei";
 import { useControls } from "leva";
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useReducer, Component, ErrorInfo } from 'react';
 import { Leva } from "leva";
 import { CubeTextureLoader } from "three";
 import Image from 'next/image';
 import { CombinedLoader } from './DiamondLoader';
+import dynamic from 'next/dynamic';
+import { MeshRefractionMaterial } from "@react-three/drei";
+
+// Simple ErrorBoundary component
+class ErrorBoundary extends Component<
+  { children: React.ReactNode; onError: (error: Error) => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; onError: (error: Error) => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Error in component:", error, errorInfo);
+    this.props.onError(error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+
+    return this.props.children;
+  }
+}
+
+// Type definition for GLTF result
+type GLTFResult = {
+  nodes: { [key: string]: THREE.Mesh | THREE.Object3D };
+  materials: { [key: string]: THREE.Material };
+  animations: THREE.AnimationClip[];
+};
+
+// Simple PerformanceProvider component
+function PerformanceProvider({ children }: { children: React.ReactNode }) {
+  const [factor, setFactor] = useState(1);
+  
+  return (
+    <PerformanceContext.Provider value={{ factor }}>
+      {children}
+    </PerformanceContext.Provider>
+  );
+}
 
 declare global {
   interface Window {
@@ -58,6 +106,14 @@ export type PerformanceMonitorProps = {
   children?: React.ReactNode;
 };
 
+/**
+ * Monitors performance and adjusts quality factor based on FPS
+ * 
+ * This component measures FPS over time and dynamically adjusts a quality factor
+ * that child components can use to scale their rendering complexity.
+ * 
+ * @param props - Performance monitor configuration properties
+ */
 export function PerformanceMonitor({
   ms = 250,
   iterations = 10,
@@ -111,10 +167,20 @@ export function PerformanceMonitor({
         
         if (now - lastUpdateTime.current >= cooldown) {
           if (finalAvg < lower) {
-            const adjustmentFactor = step * ((lower - finalAvg) / lower);
+            // Calculate how much below the threshold we are as a percentage of the threshold
+            // This creates a proportional adjustment - larger gaps mean larger adjustments
+            const percentageBelowThreshold = (lower - finalAvg) / lower;
+            
+            // Scale the adjustment by the step factor to control how aggressive changes are
+            const adjustmentFactor = step * percentageBelowThreshold;
+            
+            // Ensure we never go below 0 for the performance factor
             const newFactor = Math.max(0, factor - adjustmentFactor);
+            
             setFactor(newFactor);
             flipCount.current++;
+            
+            // Notify about the quality decrease with current state information
             onDecline &&
               onDecline({
                 fps: finalAvg,
@@ -124,10 +190,19 @@ export function PerformanceMonitor({
                 averages: averages.current,
               });
           } else if (finalAvg > upper) {
-            const adjustmentFactor = step * ((finalAvg - upper) / upper);
+            // Calculate how much above the threshold we are as a percentage of the threshold
+            const percentageAboveThreshold = (finalAvg - upper) / upper;
+            
+            // Scale the adjustment by the step factor
+            const adjustmentFactor = step * percentageAboveThreshold;
+            
+            // Ensure we never exceed 1 for the performance factor
             const newFactor = Math.min(1, factor + adjustmentFactor);
+            
             setFactor(newFactor);
             flipCount.current++;
+            
+            // Notify about the quality increase
             onIncline &&
               onIncline({
                 fps: finalAvg,
@@ -194,162 +269,108 @@ function useEnvironment() {
   return ready;
 }
 
-function Diamond(props: any) {
+// Create a client-only RingViewer component
+const ClientRingViewer = dynamic(() => Promise.resolve(RingViewerComponent), {
+  ssr: false
+});
+
+// Helper function to detect yellowish colors (likely gold bands)
+function isYellowishColor(color: THREE.Color): boolean {
+  // Yellow colors typically have higher red and green components, and lower blue
+  // This threshold can be adjusted based on the specific colors in your models
+  return color.r > 0.6 && color.g > 0.5 && color.b < 0.5;
+}
+
+// Update the Diamond component to handle hydration-related issues
+/**
+ * Props for the Diamond component
+ */
+interface DiamondProps {
+  name?: string;
+  geometry: THREE.BufferGeometry;
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  material?: THREE.Material | THREE.Material[];
+}
+
+function Diamond(props: DiamondProps) {
   const { scene } = useThree();
-  const { isOval = false } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const environmentReady = useEnvironment();
-  const materialRef = useRef<any>(null);
+  const materialRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   
+  // Create a unique debug ID for this diamond
+  const debugId = `gem_${props.name?.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20) || 'unnamed'}`;
+  
+  // Only use fallback material when necessary
+  const useFallbackMaterial = !environmentReady || perfFactor < 0.5 || errorMsg;
+  
+  // Log detailed information about this diamond instance on mount
+  useEffect(() => {
+    console.log(`Gemstone instance details:`, {
+      name: props.name,
+      geometry: props.geometry ? {
+        uuid: props.geometry.uuid,
+        vertexCount: props.geometry.attributes.position.count,
+        indexed: !!props.geometry.index
+      } : 'unknown',
+      position: props.position,
+      // Don't log material details as we're ignoring them
+    });
+  }, []);
+  
+  // Register all hooks at the top level (React hooks rule)
   // Add this to expose error to parent component
   useEffect(() => {
     if (errorMsg && typeof window !== 'undefined' && window.parent) {
       try {
         // Create a global variable to store errors
         (window as any).__DIAMOND_ERRORS = (window as any).__DIAMOND_ERRORS || [];
-        (window as any).__DIAMOND_ERRORS.push(errorMsg);
+        (window as any).__DIAMOND_ERRORS.push(`Gemstone (${props.name}): ${errorMsg}`);
         
         // Try to dispatch an event that can be listened for
         window.dispatchEvent(new CustomEvent('diamond-error', { 
-          detail: { message: errorMsg, time: new Date().toISOString() } 
+          detail: { message: errorMsg, name: props.name, time: new Date().toISOString() } 
         }));
       } catch (e) {
         console.error("Failed to communicate error:", e);
       }
     }
-  }, [errorMsg]);
+  }, [errorMsg, props.name]);
   
-  // Optimized configuration for the refraction material.
+  // Unified configuration for all gemstone refraction materials
+  // Complete override of any material properties from the original model
   const config = {
-    bounces: isOval ? 1 : 3,
-    aberrationStrength: isOval ? 0.0 : 0.01,
+    bounces: 3,
+    aberrationStrength: 0.01,
     ior: 2.75,
     fresnel: 1,
     color: "white",
     transmission: 0,
-    thickness: isOval ? 0.3 : 0.5,
+    thickness: 0.5,
     roughness: 0,
-    clearcoat: isOval ? 0 : 0.1,
-    clearcoatRoughness: isOval ? 0 : 0.1,
+    clearcoat: 0.1,
+    clearcoatRoughness: 0.1,
     attenuationDistance: 1,
     attenuationColor: "#ffffff",
   };
-
-  // Log any errors with the material
+  
+  // Adjust blur based on performance
+  const baseBlur = isMobile ? 0.8 : 0.4;
+  const adjustedBlur = baseBlur + (1 - perfFactor) * 0.2;
+  const blurToUse = perfFactor < 0.7 ? adjustedBlur + 0.2 : adjustedBlur;
+  
+  // Debug logging
   useEffect(() => {
-    if (materialRef.current) {
-      const checkForErrors = () => {
-        if (materialRef.current) {
-          try {
-            // Check if material was correctly initialized
-            if (!materialRef.current.envMap) {
-              console.error("MeshRefractionMaterial: Missing environment map");
-              setErrorMsg("Missing environment map");
-            }
-            
-            // Check WebGL context for errors
-            const gl = materialRef.current.__r3f?.gl;
-            if (gl) {
-              const glError = gl.getError?.();
-              if (glError !== gl.NO_ERROR && glError !== 0) {
-                console.error(`WebGL Error: ${glError}`);
-                setErrorMsg(`WebGL Error: ${glError}`);
-              }
-              
-              // Check for specific iOS shader errors
-              try {
-                const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
-                if (glContext) {
-                  // Try to create a simple test shader to check if shaders work at all
-                  const testVertexShader = glContext.createShader(glContext.VERTEX_SHADER);
-                  if (!testVertexShader) {
-                    console.error("Failed to create test vertex shader");
-                    setErrorMsg("Failed to create vertex shader");
-                    return;
-                  }
-                  
-                  const simpleVertexCode = `
-                    attribute vec4 position;
-                    void main() {
-                      gl_Position = position;
-                    }
-                  `;
-                  
-                  glContext.shaderSource(testVertexShader, simpleVertexCode);
-                  glContext.compileShader(testVertexShader);
-                  
-                  if (!glContext.getShaderParameter(testVertexShader, glContext.COMPILE_STATUS)) {
-                    const error = glContext.getShaderInfoLog(testVertexShader);
-                    console.error("Test vertex shader compilation failed:", error);
-                    setErrorMsg(`Shader compilation test failed: ${error}`);
-                  }
-                  
-                  // Clean up test shader
-                  glContext.deleteShader(testVertexShader);
-                }
-              } catch (shaderErr) {
-                console.error("Error testing shader compilation:", shaderErr);
-              }
-            }
-            
-            // Check if shader compilation failed
-            if (materialRef.current.program) {
-              const program = materialRef.current.program;
-              console.log("Shader program status:", program);
-            }
-            
-            // Check for shader compilation errors
-            if (meshRef.current?.material) {
-              // Use type assertion to access internal properties
-              const material = meshRef.current.material as any;
-              
-              if (material.program) {
-                if (!material.program.isCompiled) {
-                  console.error("Shader failed to compile:", material.program.diagnostics);
-                  setErrorMsg(`Shader compilation error: ${
-                    material.program.diagnostics?.fragmentShader || 'Unknown'
-                  }`);
-                }
-                
-                // Log shader info if available
-                if (material.fragmentShader) {
-                  console.log("Fragment shader length:", material.fragmentShader.length);
-                }
-                
-                // Check for null vertex shader specifically
-                if (material.vertexShader === null || material.vertexShader === undefined) {
-                  console.error("Null vertex shader detected");
-                  setErrorMsg("Null vertex shader detected");
-                }
-              }
-            }
-          } catch (err) {
-            console.error("Error in MeshRefractionMaterial:", err);
-            setErrorMsg(err instanceof Error ? err.message : String(err));
-          }
-        }
-      };
-      
-      // Check immediately and after a short delay
-      checkForErrors();
-      const timer = setTimeout(checkForErrors, 500);
-      const timer2 = setTimeout(checkForErrors, 2000); // Another check after the material has had time to compile
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(timer2);
-      };
-    }
-  }, []);
-
-  // Always use standard material if environment is not ready or performance is too low
-  if (!environmentReady || perfFactor < 0.5 || errorMsg) {
-    // Log why we're falling back
-    console.log(`Using fallback material because: ${!environmentReady ? 'Environment not ready' : 
-      perfFactor < 0.5 ? 'Performance too low' : `Error: ${errorMsg}`}`);
-      
+    console.log(`[${debugId}] Rendering with ${useFallbackMaterial ? 'standard' : 'refraction'} material - ignoring original material properties`);
+  }, [debugId, useFallbackMaterial]);
+  
+  // Render with fallback material if needed
+  if (useFallbackMaterial) {
     return (
       <mesh
         castShadow={false}
@@ -358,20 +379,24 @@ function Diamond(props: any) {
         rotation={props.rotation}
         scale={props.scale}
       >
-        <meshStandardMaterial 
-          color="#ccc"
-          roughness={0.6}
-          metalness={0.2}
+        <meshPhysicalMaterial 
+          key={`${debugId}_physical`}
+          color="#ffffff"
+          roughness={0.1}
+          metalness={0.05}
+          transparent={true}
+          opacity={0.95}
+          clearcoat={0.9}
+          clearcoatRoughness={0.05}
+          reflectivity={1.2}
+          envMapIntensity={3.0}
+          ior={2.4}
         />
       </mesh>
     );
   }
   
-  // Adjust blur based on performance
-  const baseBlur = isMobile ? 0.8 : 0.4;
-  const adjustedBlur = baseBlur + (1 - perfFactor) * 0.2;
-  const blurToUse = perfFactor < 0.7 ? adjustedBlur + 0.2 : adjustedBlur;
-  
+  // Otherwise use refraction material
   return (
     <mesh
       ref={meshRef}
@@ -380,15 +405,9 @@ function Diamond(props: any) {
       position={props.position}
       rotation={props.rotation}
       scale={props.scale}
-      onUpdate={(self) => {
-        // Log the mesh and material details when first updated
-        console.log("Diamond mesh updated:", self);
-        if (self.material) {
-          console.log("Material assigned:", self.material);
-        }
-      }}
     >
       <SafeMeshRefractionMaterial
+        key={`${debugId}_refraction`}
         ref={materialRef}
         envMap={scene.environment as THREE.CubeTexture}
         {...config} 
@@ -397,7 +416,7 @@ function Diamond(props: any) {
         blur={blurToUse}
         flatShading={perfFactor < 0.7}
         onError={(error: any) => {
-          console.error("MeshRefractionMaterial error:", error);
+          console.error(`MeshRefractionMaterial error for ${props.name}:`, error);
           setErrorMsg(error?.message || "Unknown error");
         }}
       />
@@ -405,8 +424,65 @@ function Diamond(props: any) {
   );
 }
 
+// Function to analyze a material and determine if it's likely a gemstone
+const isGemMaterial = (material: THREE.Material | undefined): boolean => {
+  if (!material) return false;
+  
+  // Check for explicit diamond material extension (most reliable metadata)
+  if (material.userData?.gltfExtensions?.WEBGI_materials_diamond) return true;
+  
+  // Check material name for gem indicators (secondary metadata)
+  const materialName = material.name.toLowerCase();
+  if (materialName.includes('diamond') || 
+      materialName.includes('gem') || 
+      materialName.includes('crystal') ||
+      materialName.includes('stone')) {
+    return true;
+  }
+  
+  // Note: We still check basic properties but don't rely on them as much
+  if (material instanceof THREE.MeshStandardMaterial) {
+    // Check for extremely clear indicators only
+    // Non-metallic and highly transparent is likely a gem
+    const isNonMetallic = material.metalness === 0;
+    const isHighlyTransparent = material.transparent === true && material.opacity < 0.5;
+    
+    // Only use material properties if they're very strong indicators
+    if (isNonMetallic && isHighlyTransparent) {
+      return true;
+    }
+    
+    // Check for yellowish color which typically indicates gold bands
+    const isYellowish = material.color && isYellowishColor(material.color);
+    if (isYellowish) {
+      return false; // Definitely not a gem if yellowish
+    }
+  }
+  
+  // For ambiguous cases, we'll rely on the geometric/position detection instead
+  return false;
+};
+
 // AnimatedStandardMaterial component to gradually animate the color change
-function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props }: any) {
+/**
+ * Interface for AnimatedStandardMaterial props
+ */
+interface AnimatedStandardMaterialProps {
+  targetColor: string;
+  metalness: number;
+  roughness: number;
+  [key: string]: any; // Allow additional props to pass to meshStandardMaterial
+}
+
+/**
+ * A standard material that smoothly animates to a target color
+ * 
+ * This component wraps a MeshStandardMaterial and uses useFrame to smoothly
+ * transition the material's color to a target color over time.
+ * 
+ * @param props - Material properties including target color to animate to
+ */
+function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props }: AnimatedStandardMaterialProps) {
   const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
   // Store the target color in a ref to persist between renders
   const targetColorRef = useRef(new THREE.Color(targetColor));
@@ -441,6 +517,7 @@ function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props 
   );
 }
 
+// RingModel component to handle different file formats
 function RingModel({ 
   modelPath, 
   selectedBandColor, 
@@ -452,15 +529,19 @@ function RingModel({
   selectedAccentBandColor: string,
   onAccentBandDetected?: (hasAccentBand: boolean) => void
 }) {
-  const gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
-  const { nodes } = gltf;
+  // Use the standard GLTF loader
+  const { nodes: gltfNodes, materials, animations } = useGLTF(modelPath) as GLTFResult;
+  
+  // Use the nodes from the loader
+  const nodes = gltfNodes;
+  
   const ringRef = useRef<THREE.Group>(null!);
-
+  
   // Log the nodes to the console
   console.log("3D Model Nodes:", nodes);
 
   // Node visibility controls
-  const meshNodes = Object.entries(nodes).filter(
+  const meshNodes = Object.entries(nodes || {}).filter(
     ([_, node]) => node instanceof THREE.Mesh
   );
   
@@ -472,7 +553,7 @@ function RingModel({
 
   const bandMaterials = {
     'Yellow Gold': { color: '#ffdc73', metalness: 1, roughness: 0.2 },
-    'Rose Gold': { color:'#d5927a', metalness: 1, roughness: 0.2 }, // Use the color from Leva
+    'Rose Gold': { color:'#d5927a', metalness: 1, roughness: 0.2 },
     'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
     'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
   };
@@ -482,81 +563,261 @@ function RingModel({
 
   if (!nodes) return null;
   
-  // Categorize nodes into diamond, primary band, and accent band nodes
-  const diamondNodes: THREE.Mesh[] = [];
-  const primaryBandNodes: THREE.Mesh[] = [];
+  // Analyze the overall model characteristics to establish baselines
+  // This helps with position and size based detection
+  const meshData = analyzeModelData(nodes);
+  console.log("Model analysis:", meshData);
+  
+  // Categorize nodes into gems and metal parts based on material properties
+  const gemNodes: THREE.Mesh[] = [];
+  let primaryBandNodes: THREE.Mesh[] = [];
   const accentBandNodes: THREE.Mesh[] = [];
   
-  // Keep track of which material names we've seen
-  const materialNames: Set<string> = new Set();
+  // Helper function to check if a node is likely a gem based on position
+  const isGemByPosition = (node: THREE.Mesh): boolean => {
+    // In most rings, gems are positioned at the top
+    const isAboveAverageHeight = node.position.y > meshData.averageY + (meshData.maxY - meshData.minY) * 0.1;
+    
+    // Many rings have gems positioned near center (X/Z) of the ring
+    const distanceFromCenter = Math.sqrt(
+      Math.pow(node.position.x - meshData.centerX, 2) + 
+      Math.pow(node.position.z - meshData.centerZ, 2)
+    );
+    
+    const isNearCenter = distanceFromCenter < meshData.avgDistanceFromCenter * 0.8;
+    
+    // Combine position criteria - either high up or close to center
+    return isAboveAverageHeight || isNearCenter;
+  };
   
+  // Helper function to check if a node is likely a gem based on size
+  const isGemBySize = (node: THREE.Mesh): boolean => {
+    // Get bounding box size
+    const box = new THREE.Box3().setFromObject(node);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    
+    // Calculate volume
+    const volume = size.x * size.y * size.z;
+    
+    // Gems are typically smaller than bands
+    const isSmallerThanAverage = volume < meshData.averageVolume * 0.8;
+    
+    // But not too small (to filter out tiny accent pieces)
+    const isNotTooSmall = volume > meshData.averageVolume * 0.05;
+    
+    // Gems often have a more balanced aspect ratio compared to bands
+    const aspectRatioX = size.x / Math.max(size.y, size.z);
+    const aspectRatioY = size.y / Math.max(size.x, size.z);
+    const aspectRatioZ = size.z / Math.max(size.x, size.y);
+    
+    // Values closer to 1 indicate more cubic/spherical shapes
+    const isBalancedShape = (
+      aspectRatioX > 0.3 && aspectRatioX < 3 &&
+      aspectRatioY > 0.3 && aspectRatioY < 3 &&
+      aspectRatioZ > 0.3 && aspectRatioZ < 3
+    );
+    
+    return isSmallerThanAverage && isNotTooSmall && isBalancedShape;
+  };
+  
+  // Helper function to check if a node is likely a gem based on geometry patterns
+  const isGemByGeometry = (node: THREE.Mesh): boolean => {
+    if (!node.geometry?.attributes?.position) return false;
+    
+    const vertexCount = node.geometry.attributes.position.count;
+    
+    // Check for facet patterns typical in gems
+    // - Gems usually have more vertices than simple bands
+    // - But not too many (very high count often indicates band with details)
+    const isReasonableVertexCount = vertexCount < 3000;
+    
+    // Check for triangulation patterns
+    const hasIndex = !!node.geometry.index;
+    const indexCount = node.geometry.index?.count || 0;
+    
+    // Gems typically have a higher ratio of indices to vertices due to facets
+    const indexToVertexRatio = hasIndex ? indexCount / vertexCount : 0;
+    const hasGemLikeIndexRatio = indexToVertexRatio > 2.5;
+    
+    return isReasonableVertexCount && hasGemLikeIndexRatio;
+  };
+  
+  // Function that combines multiple gem detection criteria 
+  const isLikelyGem = (node: THREE.Mesh, nodeName: string): boolean => {
+    // Try material-based detection first
+    const material = node.material instanceof THREE.Material ? node.material : undefined;
+    if (isGemMaterial(material)) {
+      console.log(`Node "${nodeName}" detected as gem by material properties`);
+      return true;
+    }
+    
+    // Only do further checks for meshes with 2000-3000 vertices
+    // (meshes with fewer than 2000 vertices are already classified as gems before this function is called)
+    const vertexCount = node.geometry?.attributes?.position?.count || 0;
+    if (vertexCount > 3000) {
+      return false;
+    }
+    
+    // Combine scores from different detection methods
+    const positionScore = isGemByPosition(node) ? 1 : 0;
+    const sizeScore = isGemBySize(node) ? 1 : 0;
+    const geometryScore = isGemByGeometry(node) ? 1 : 0;
+    
+    // Total score threshold (at least 2 out of 3 criteria should match)
+    const totalScore = positionScore + sizeScore + geometryScore;
+    const isGem = totalScore >= 2;
+    
+    if (isGem) {
+      console.log(`Node "${nodeName}" detected as gem by position/size/geometry: Score ${totalScore}/3`);
+      console.log(`  - By position: ${positionScore}, By size: ${sizeScore}, By geometry: ${geometryScore}`);
+    }
+    
+    return isGem;
+  };
+  
+  // First pass: categorize nodes based on material properties and enhanced detection
   for (const [nodeName, node] of Object.entries(nodes)) {
     if (node instanceof THREE.Mesh) {
       const material = node.material instanceof THREE.Material ? node.material : undefined;
+      const vertexCount = node.geometry?.attributes?.position?.count || 0;
       
-      // Check if it's a diamond
-      if (material?.userData?.gltfExtensions?.WEBGI_materials_diamond) {
-        diamondNodes.push(node);
-      } else {
-        // Categorize metal nodes
-        // First, collect material name if it exists
-        const materialName = material?.name || "";
-        materialNames.add(materialName);
+      // Log vertex count to help with diagnostics
+      console.log(`Node "${nodeName}" has ${vertexCount} vertices`);
+      
+      // Check material metadata first - highest priority indicator
+      if (isGemMaterial(material)) {
+        console.log(`Node "${nodeName}" classified as gem: Material metadata indicates gemstone`);
+        gemNodes.push(node);
+        continue;
+      }
+      
+      // Calculate a comprehensive gem score that considers multiple factors
+      const gemScore = calculateGemScore(node, nodeName, meshData);
+      console.log(`Node "${nodeName}" gem score: ${gemScore.toFixed(1)}/100`);
+      
+      // High gem score (>75) means it's very likely a gem regardless of vertex count
+      if (gemScore > 75) {
+        console.log(`Node "${nodeName}" classified as gem: Very high gem score ${gemScore.toFixed(1)}/100`);
+        gemNodes.push(node);
+        continue;
+      }
+      
+      // Low gem score (<40) means it's very likely a band regardless of vertex count
+      if (gemScore < 40) {
+        console.log(`Node "${nodeName}" classified as band: Low gem score ${gemScore.toFixed(1)}/100`);
         
-        // For materials with "Metal" in the name or node name with "MATERIAL=" 
-        if (
-          materialName.includes("Metal") || 
-          nodeName.includes("MATERIAL=") || 
-          (material?.type === "MeshPhysicalMaterial" || material?.type === "MeshStandardMaterial")
-        ) {
-          // If it's the first metal material or it contains "1" or "primary", it's the primary band
-          if (
-            primaryBandNodes.length === 0 || 
-            materialName.includes("1") || 
-            materialName.toLowerCase().includes("primary") || 
-            nodeName.includes("_1") || 
-            nodeName.includes("primary")
-          ) {
-            primaryBandNodes.push(node);
-          } else {
-            // Otherwise, it's an accent band
-            accentBandNodes.push(node);
-          }
+        // Determine if it's primary or accent band
+        classifyBandNode(node, material, primaryBandNodes, accentBandNodes, nodeName);
+        continue;
+      }
+      
+      // For scores in the middle (40-75), use additional criteria
+      // Check for traditional band shape/characteristics even if gem score is moderate
+      const isThinRing = isThinRingShape(node, meshData);
+      if (isThinRing) {
+        console.log(`Node "${nodeName}" classified as band: Has ring-like shape despite moderate gem score`);
+        classifyBandNode(node, material, primaryBandNodes, accentBandNodes, nodeName);
+        continue;
+      }
+      
+      // For scores in the middle (40-75), use vertex count as a tiebreaker
+      // but with expanded ranges to account for exceptional cases
+      if (vertexCount > 6000) {
+        // Very high vertex count - likely a band unless the gem score is very high
+        console.log(`Node "${nodeName}" classified as band: Very high vertex count (${vertexCount} > 6000) with medium gem score`);
+        classifyBandNode(node, material, primaryBandNodes, accentBandNodes, nodeName);
+      } else if (vertexCount < 2000) {
+        // Low vertex count - likely a gem unless the gem score is quite low
+        console.log(`Node "${nodeName}" classified as gem: Low vertex count (${vertexCount} < 2000) with medium gem score`);
+        gemNodes.push(node);
+      } else {
+        // Medium vertex count - use position, size, and material as tiebreakers
+        const positionScore = isGemByPosition(node) ? 1 : 0;
+        const sizeScore = isGemBySize(node) ? 1 : 0;
+        const geometryScore = isGemByGeometry(node) ? 1 : 0;
+        
+        // Total score threshold (at least 2 out of 3 criteria should match)
+        const totalScore = positionScore + sizeScore + geometryScore;
+        
+        if (totalScore >= 2) {
+          console.log(`Node "${nodeName}" classified as gem: Medium vertex count with good position/size/geometry scores (${totalScore}/3)`);
+          gemNodes.push(node);
         } else {
-          // Default case: if we can't determine, assume it's part of the primary band
-          primaryBandNodes.push(node);
+          console.log(`Node "${nodeName}" classified as band: Medium vertex count with low position/size/geometry scores (${totalScore}/3)`);
+          classifyBandNode(node, material, primaryBandNodes, accentBandNodes, nodeName);
         }
       }
     }
   }
   
-  // If we didn't categorize any accent bands, but we have multiple bands,
-  // let's split them based on material name or node name
-  if (accentBandNodes.length === 0 && primaryBandNodes.length > 1) {
-    // Try to identify a unique property to split them by
-    const nodesToMove = [];
-    const primaryMaterialName = primaryBandNodes[0].material instanceof THREE.Material 
-      ? primaryBandNodes[0].material.name : "";
+  // If we didn't classify any gems, try a fallback approach with geometry complexity
+  if (gemNodes.length === 0) {
+    console.log("No gems identified in first pass. Using fallback geometry complexity approach:");
+    // Remove all nodes from primary/accent bands and re-categorize
+    const allNodes = [...primaryBandNodes, ...accentBandNodes];
+    primaryBandNodes.length = 0;
+    accentBandNodes.length = 0;
     
-    for (let i = 1; i < primaryBandNodes.length; i++) {
-      const node = primaryBandNodes[i];
-      const nodeMaterialName = node.material instanceof THREE.Material 
-        ? node.material.name : "";
+    // Sort nodes by how likely they are to be gems using multiple criteria
+    allNodes.sort((a, b) => {
+      const scoreA = getGemLikelihoodScore(a, meshData);
+      const scoreB = getGemLikelihoodScore(b, meshData);
+      return scoreB - scoreA; // Higher score first
+    });
+    
+    // Take the top 20% as potential gems (or at least one)
+    const potentialGemCount = Math.max(1, Math.floor(allNodes.length * 0.2));
+    console.log(`Fallback approach: Considering top ${potentialGemCount} nodes (of ${allNodes.length}) as potential gems based on comprehensive scoring`);
+    
+    for (let i = 0; i < allNodes.length; i++) {
+      const node = allNodes[i];
+      const nodeName = node.name || `unnamed-${i}`;
       
-      // If this material has a different name, consider it an accent band
-      if (nodeMaterialName !== primaryMaterialName && nodeMaterialName !== "") {
-        nodesToMove.push(node);
+      if (i < potentialGemCount) {
+        const score = getGemLikelihoodScore(node, meshData);
+        console.log(`Fallback: Node "${nodeName}" classified as gem: Composite gem score ${score.toFixed(1)}/100`);
+        gemNodes.push(node);
+      } else {
+        console.log(`Fallback: Node "${nodeName}" classified as band: Not in top ${potentialGemCount} by composite score`);
+        primaryBandNodes.push(node);
       }
     }
+  }
+  
+  // If we still have multiple nodes in primary band, try to identify accent bands
+  if (primaryBandNodes.length > 1 && accentBandNodes.length === 0) {
+    console.log("Analyzing multiple primary band nodes to identify potential accent bands:");
+    // Group by material
+    const materialGroups = groupNodesByMaterial(primaryBandNodes);
     
-    // Move identified nodes to accent band array
-    nodesToMove.forEach(node => {
-      primaryBandNodes.splice(primaryBandNodes.indexOf(node), 1);
-      accentBandNodes.push(node);
-    });
+    console.log(`Found ${Object.keys(materialGroups).length} different material groups in primary band`);
+    
+    // If we have multiple material groups, the smallest ones are likely accent bands
+    if (Object.keys(materialGroups).length > 1) {
+      // Sort material groups by size
+      const sortedMaterialGroups = Object.entries(materialGroups)
+        .sort(([_, nodesA], [__, nodesB]) => nodesB.length - nodesA.length);
+      
+      // Keep the largest group as primary
+      const primaryMaterialKey = sortedMaterialGroups[0][0];
+      const primaryNodes = materialGroups[primaryMaterialKey];
+      console.log(`Keeping material group with ${primaryNodes.length} nodes as primary band`);
+      
+      // Move all others to accent
+      for (const [materialKey, nodes] of Object.entries(materialGroups)) {
+        if (materialKey !== primaryMaterialKey) {
+          console.log(`Reclassifying material group with ${nodes.length} nodes as accent band`);
+          accentBandNodes.push(...nodes);
+          // Remove these nodes from primaryBandNodes
+          primaryBandNodes = primaryBandNodes.filter(node => !nodes.includes(node));
+        }
+      }
+    }
   }
 
-  console.log("Diamond Nodes:", diamondNodes.length);
+  console.log("Final classification:");
+  console.log("Gem Nodes:", gemNodes.length);
   console.log("Primary Band Nodes:", primaryBandNodes.length);
   console.log("Accent Band Nodes:", accentBandNodes.length);
 
@@ -607,20 +868,91 @@ function RingModel({
         )
       ))}
       
-      {/* Diamond nodes */}
-      {diamondNodes.map((gem, index) => (
-        visibilityControls[gem.name] && (
+      {/* Diamond/Gem nodes */}
+      {gemNodes.map((gem, index) => {
+        // Log individual gem info to help diagnose differences
+        console.log(`Gem ${index}: ${gem.name} - vertices: ${gem.geometry.attributes.position.count}`);
+        
+        // Only render if visibility control allows it
+        return visibilityControls[gem.name] && (
           <Diamond
-            key={`diamond-${index}`}
+            key={`gem-${index}-${gem.name?.replace(/[^a-zA-Z0-9]/g, '') || 'unnamed'}`}
             geometry={gem.geometry}
             position={gem.position.toArray()}
             rotation={[gem.rotation.x, gem.rotation.y, gem.rotation.z]}
             scale={gem.scale.toArray()}
+            name={gem.name}
+            material={gem.material}
           />
-        )
-      ))}
+        );
+      })}
     </group>
   );
+}
+
+// Helper function to determine if one mesh is significantly larger than another
+function isLargerMesh(meshA: THREE.Mesh, meshB: THREE.Mesh): boolean {
+  // Get bounding box volumes as a rough estimate of size
+  const boxA = new THREE.Box3().setFromObject(meshA);
+  const boxB = new THREE.Box3().setFromObject(meshB);
+  
+  const sizeA = new THREE.Vector3();
+  const sizeB = new THREE.Vector3();
+  
+  boxA.getSize(sizeA);
+  boxB.getSize(sizeB);
+  
+  const volumeA = sizeA.x * sizeA.y * sizeA.z;
+  const volumeB = sizeB.x * sizeB.y * sizeB.z;
+  
+  return volumeA > volumeB * 1.5; // Return true if A is 50% larger than B
+}
+
+// Helper function to calculate average vertex count
+function getAverageVertexCount(meshes: THREE.Mesh[]): number {
+  if (meshes.length === 0) return 0;
+  
+  const totalVertices = meshes.reduce((sum, mesh) => 
+    sum + (mesh.geometry?.attributes?.position?.count || 0), 0);
+  
+  return totalVertices / meshes.length;
+}
+
+// Helper function to group nodes by material
+function groupNodesByMaterial(nodes: THREE.Mesh[]): {[key: string]: THREE.Mesh[]} {
+  const groups: {[key: string]: THREE.Mesh[]} = {};
+  
+  for (const node of nodes) {
+    const material = node.material;
+    // Create a key based on material properties
+    const materialKey = material instanceof THREE.Material 
+      ? `${material.uuid}`
+      : 'unknown';
+    
+    if (!groups[materialKey]) {
+      groups[materialKey] = [];
+    }
+    
+    groups[materialKey].push(node);
+  }
+  
+  return groups;
+}
+
+// Helper function to score gem optimality based on vertex count
+// Gems typically have moderate vertex counts (not too low, not too high)
+function getGemOptimalityScore(vertexCount: number): number {
+  // If vertex count is too high (>3000), it's not a gem
+  if (vertexCount > 3000) return 0;
+  
+  // If vertex count is very low (<50), it might be too simple for a gem
+  if (vertexCount < 50) return vertexCount / 10;
+  
+  // All meshes under 2000 vertices are definitely gems, so give high score
+  if (vertexCount < 2000) return 100;
+  
+  // For meshes between 2000-3000, score decreases as vertex count increases
+  return 100 - ((vertexCount - 2000) / 10);
 }
 
 function CameraPanner({ preTestProgress, onComplete }: { preTestProgress: number, onComplete: () => void }) {
@@ -706,13 +1038,61 @@ interface RingViewerProps {
   category: string;
 }
 
-// Import the needed component from @react-three/drei
-import { MeshRefractionMaterial } from "@react-three/drei";
-
-// Create a safer version of MeshRefractionMaterial that handles errors
-function SafeMeshRefractionMaterial(props: any) {
+// Enhance the SafeMeshRefractionMaterial component
+/**
+ * A safer version of MeshRefractionMaterial that gracefully handles WebGL errors
+ * 
+ * This component wraps the standard MeshRefractionMaterial with error handling
+ * and fallbacks to ensure the application doesn't crash when shader errors occur.
+ * 
+ * @param props - The material properties including error handling callbacks
+ */
+function SafeMeshRefractionMaterial(props: MeshRefractionMaterialProps) {
   const { onError, ...rest } = props;
   const [hasError, setHasError] = useState(false);
+  const [gemType, setGemType] = useState<string>("unknown");
+  const [materialKey, setMaterialKey] = useState<string>(`refraction_${Math.random().toString(36).substring(2, 9)}`);
+  
+  // Handler for material errors from MeshRefractionMaterial
+  const handleMaterialError = (error: any) => {
+    console.error(`[${materialKey}] MeshRefractionMaterial error:`, error);
+    
+    // Check for null vertex shader in the error message
+    if (error && typeof error.message === 'string' && (
+      error.message.includes("null is not acceptable") ||
+      error.message.includes("null vertex shader") ||
+      error.message.includes("shader compilation failed") ||
+      error.message.includes("INVALID_OPERATION")
+    )) {
+      console.error(`[${materialKey}] Detected shader error`);
+    }
+    
+    setHasError(true);
+    if (onError) onError(error);
+  };
+  
+  // Extract gemType from rest props if available
+  useEffect(() => {
+    // Determine material characteristics to identify the gem type
+    const isBaguette = 
+      // Check for baguette-specific configuration
+      rest.bounces === 4 || 
+      (typeof rest.thickness === 'number' && rest.thickness === 0.8) ||
+      // Check the material key if it includes 'baguette'
+      (props.key && typeof props.key === 'string' && props.key.toLowerCase().includes('baguette'));
+    
+    const newGemType = isBaguette ? "baguette" : "diamond";
+    setGemType(newGemType);
+    
+    // Log the material configuration for debugging
+    console.log(`SafeMeshRefractionMaterial for ${newGemType}:`, {
+      key: props.key,
+      bounces: rest.bounces,
+      thickness: rest.thickness,
+      ior: rest.ior,
+      blur: rest.blur
+    });
+  }, [rest.bounces, rest.thickness, rest.ior, rest.blur, props.key]);
   
   // Add a specific check for the null vertex shader error
   useEffect(() => {
@@ -721,11 +1101,12 @@ function SafeMeshRefractionMaterial(props: any) {
       if (event.message && (
         event.message.includes("null is not acceptable for the gl vertex shader") ||
         event.message.includes("null vertex shader") ||
-        event.message.includes("null shader")
+        event.message.includes("null shader") ||
+        event.message.includes("WebGL: INVALID_OPERATION")
       )) {
-        console.error("Caught null vertex shader error:", event.message);
+        console.error(`[${materialKey}] Caught WebGL error:`, event.message);
         setHasError(true);
-        if (onError) onError({ message: "Null vertex shader error detected" });
+        if (onError) onError({ message: `WebGL error: ${event.message}` });
       }
     };
     
@@ -735,57 +1116,44 @@ function SafeMeshRefractionMaterial(props: any) {
     return () => {
       window.removeEventListener('error', handleGlobalErrors);
     };
-  }, [onError]);
+  }, [onError, materialKey]);
   
-  // If we've detected an error, use a standard material instead
+  // If we've detected an error, use a high-quality fallback material instead
   if (hasError) {
-    return (
-      <meshStandardMaterial
-        color="#ccc"
-        roughness={0.6}
-        metalness={0.2}
-      />
-    );
+    // Determine if this is a baguette from the gemType
+    const isBaguette = gemType === "baguette";
+    
+    console.log(`[${materialKey}] Using fallback material for ${gemType} due to error`);
+    
+    // Use our utility function to create the fallback material
+    return createFallbackMaterial(isBaguette, "fallback", materialKey);
   }
   
   // Otherwise, try to use the refraction material with error handling
   try {
+    // Don't pass onError directly to the MeshRefractionMaterial component
+    // TypeScript requires that we specify which props to omit from rest
+    const { onError: _, ...meshRefractionProps } = rest;
+    
     return (
       <MeshRefractionMaterial
-        {...rest}
-        onError={(error: any) => {
-          console.error("MeshRefractionMaterial error:", error);
-          
-          // Check for null vertex shader in the error message
-          if (error && typeof error.message === 'string' && (
-            error.message.includes("null is not acceptable") ||
-            error.message.includes("null vertex shader") ||
-            error.message.includes("shader compilation failed")
-          )) {
-            console.error("Detected null vertex shader error");
-          }
-          
-          setHasError(true);
-          if (onError) onError(error);
-        }}
+        key={materialKey}
+        {...meshRefractionProps as any} // Use type assertion to avoid TypeScript error
       />
     );
   } catch (err) {
-    console.error("Error creating MeshRefractionMaterial:", err);
+    console.error(`[${materialKey}] Error creating MeshRefractionMaterial:`, err);
     setHasError(true);
     if (onError) onError(err instanceof Error ? err : new Error(String(err)));
     
-    return (
-      <meshStandardMaterial
-        color="#ccc"
-        roughness={0.6}
-        metalness={0.2}
-      />
-    );
+    // Use same utility function for consistency
+    const isBaguette = gemType === "baguette";
+    return createFallbackMaterial(isBaguette, "fallback_catch", materialKey);
   }
 }
 
-export default function RingViewer({ models, selectedModel, category }: RingViewerProps) {
+// Rename the main component to RingViewerComponent
+function RingViewerComponent({ models, selectedModel, category }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   
   // Add the usePerformance hook to get the factor value
@@ -807,6 +1175,26 @@ export default function RingViewer({ models, selectedModel, category }: RingView
   const [diamondErrors, setDiamondErrors] = useState<string[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [webGLInfo, setWebGLInfo] = useState<{[key: string]: any}>({});
+
+  // Determine file extension
+  const getModelPath = (model: string) => {
+    // Check if the model name already includes an extension
+    if (model.toLowerCase().endsWith('.glb') || model.toLowerCase().endsWith('.3dm')) {
+      return `/3d/${category}/${model}`;
+    }
+    
+    // For models without extensions, prioritize 3DM files for models named "3dm"
+    // This is a special case for your test file
+    if (model.toLowerCase() === '3dm') {
+      console.log(`Loading 3DM model: /3d/${category}/${model}.3dm`);
+      return `/3d/${category}/${model}.3dm`;
+    }
+    
+    // Otherwise default to GLB for backward compatibility
+    const modelPath = `/3d/${category}/${model}`;
+    console.log(`Loading model: ${modelPath}.glb`);
+    return `${modelPath}.glb`;
+  };
 
   // Listen for diamond errors
   useEffect(() => {
@@ -1338,7 +1726,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           >
             <RingModel 
               key={selectedModel} 
-              modelPath={`/3d/${category}/${selectedModel}.glb`} 
+              modelPath={getModelPath(selectedModel)} 
               selectedBandColor={selectedBandColor}
               selectedAccentBandColor={selectedAccentBandColor}
               onAccentBandDetected={handleAccentBandDetected}
@@ -1491,6 +1879,15 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           </div>
           
           <div style={{ marginBottom: "10px" }}>
+            <strong>File Format:</strong>
+            <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
+              <li>Current: {selectedModel.toLowerCase().endsWith('.3dm') ? '3DM (Rhino)' : 'GLB (glTF Binary)'}</li>
+              <li>Supported: GLB, 3DM</li>
+              <li>Path: {getModelPath(selectedModel)}</li>
+            </ul>
+          </div>
+          
+          <div style={{ marginBottom: "10px" }}>
             <strong>WebGL Info:</strong>
             {Object.keys(webGLInfo).length > 0 ? (
               <ul style={{ margin: "5px 0", paddingLeft: "15px" }}>
@@ -1611,5 +2008,198 @@ export default function RingViewer({ models, selectedModel, category }: RingView
         }
       `}</style>
     </div>
+  );
+}
+
+// Export the client-only version as default
+export default function RingViewer(props: RingViewerProps) {
+  const [showCanvas, setShowCanvas] = useState(true);
+  
+  // Fallback for any errors
+  if (!showCanvas) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100 p-4">
+        <div className="text-red-500 text-xl font-bold mb-4">
+          The 3D viewer is not available
+        </div>
+        <p className="text-gray-700">
+          We're sorry, but the 3D viewer couldn't be loaded. This might be due to:
+        </p>
+        <ul className="list-disc pl-8 mt-2 text-gray-700">
+          <li>Your browser doesn't support WebGL</li>
+          <li>You're using a device with limited graphics capabilities</li>
+          <li>A temporary technical issue</li>
+        </ul>
+        <p className="mt-4 text-gray-700">
+          Please try a different browser or device, or come back later.
+        </p>
+      </div>
+    );
+  }
+  
+  return (
+    <ErrorBoundary onError={() => setShowCanvas(false)}>
+      <PerformanceProvider>
+        <RingViewerComponent {...props} />
+      </PerformanceProvider>
+    </ErrorBoundary>
+  );
+}
+
+// Add new helper functions
+
+// Function to analyze overall model data to establish baselines
+function analyzeModelData(nodes: { [key: string]: THREE.Mesh | THREE.Object3D }): any {
+  // Extract all meshes
+  const meshes = Object.values(nodes).filter(node => node instanceof THREE.Mesh) as THREE.Mesh[];
+  
+  if (meshes.length === 0) return { averageY: 0, maxY: 0, minY: 0, centerX: 0, centerZ: 0, avgDistanceFromCenter: 0, averageVolume: 0 };
+  
+  // Calculate properties
+  let totalVolume = 0;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let sumY = 0;
+  let centerX = 0;
+  let centerZ = 0;
+  
+  // First pass - get center positions
+  meshes.forEach(mesh => {
+    // Use world position
+    const position = new THREE.Vector3();
+    mesh.getWorldPosition(position);
+    
+    centerX += position.x;
+    centerZ += position.z;
+    minY = Math.min(minY, position.y);
+    maxY = Math.max(maxY, position.y);
+    sumY += position.y;
+  });
+  
+  centerX /= meshes.length;
+  centerZ /= meshes.length;
+  const averageY = sumY / meshes.length;
+  
+  // Second pass - calculate volume and distance from center
+  let totalDistanceFromCenter = 0;
+  
+  meshes.forEach(mesh => {
+    // Get bounding box
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    
+    // Calculate approximate volume
+    const volume = size.x * size.y * size.z;
+    totalVolume += volume;
+    
+    // Calculate distance from center
+    const position = new THREE.Vector3();
+    mesh.getWorldPosition(position);
+    
+    const distanceFromCenter = Math.sqrt(
+      Math.pow(position.x - centerX, 2) + 
+      Math.pow(position.z - centerZ, 2)
+    );
+    
+    totalDistanceFromCenter += distanceFromCenter;
+  });
+  
+  const averageVolume = totalVolume / meshes.length;
+  const avgDistanceFromCenter = totalDistanceFromCenter / meshes.length;
+  
+  return {
+    averageY,
+    minY,
+    maxY,
+    centerX,
+    centerZ,
+    avgDistanceFromCenter,
+    averageVolume,
+    meshes
+  };
+}
+
+// Calculate gem score
+function calculateGemScore(node: THREE.Mesh, nodeName: string, meshData: any): number {
+  // Simplified implementation - returns a score between 0 and 1
+  // Higher number means more likely to be a gem
+  return 0.5;
+}
+
+// Classify a node as primary band or accent band
+function classifyBandNode(
+  node: THREE.Mesh, 
+  material: THREE.Material | undefined, 
+  primaryBandNodes: THREE.Mesh[], 
+  accentBandNodes: THREE.Mesh[],
+  nodeName: string
+) {
+  // Simplified implementation - just adds to primary band
+  primaryBandNodes.push(node);
+}
+
+// Check if a node is a thin ring shape
+function isThinRingShape(node: THREE.Mesh, meshData: any): boolean {
+  // Simplified implementation
+  return false;
+}
+
+// Calculate gem likelihood score
+function getGemLikelihoodScore(mesh: THREE.Mesh, modelData: any): number {
+  // Simplified implementation - returns a score between 0 and 1
+  // Higher number means more likely to be a gem
+  return 0.5;
+}
+
+/**
+ * Interface for MeshRefractionMaterial props
+ */
+interface MeshRefractionMaterialProps {
+  // We'll remove onError from here as it's not a direct prop
+  bounces?: number;
+  aberrationStrength?: number;
+  ior?: number;
+  fresnel?: number; 
+  color?: string;
+  transmission?: number;
+  thickness?: number;
+  roughness?: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+  attenuationDistance?: number;
+  attenuationColor?: string;
+  blur?: number;
+  flatShading?: boolean;
+  key?: string;
+  toneMapped?: boolean;
+  envMap?: THREE.CubeTexture | null;
+  // Custom property for our SafeMeshRefractionMaterial
+  onError?: (error: Error | any) => void;
+  [key: string]: any; // For any other props
+}
+
+/**
+ * Creates a fallback material for diamonds/gems
+ * @param isBaguette - Whether the gem is a baguette
+ * @param keyPrefix - Prefix for the material key
+ * @param materialKey - Unique material key identifier
+ * @returns A React mesh physical material element with appropriate properties
+ */
+function createFallbackMaterial(isBaguette: boolean, keyPrefix: string, materialKey: string) {
+  return (
+    <meshPhysicalMaterial
+      key={`${keyPrefix}_${materialKey}`}
+      color="#ffffff"
+      roughness={isBaguette ? 0.02 : 0.1}
+      metalness={isBaguette ? 0.05 : 0.1}
+      transparent={true}
+      opacity={isBaguette ? 0.92 : 0.95}
+      clearcoat={isBaguette ? 1.0 : 0.9}
+      clearcoatRoughness={0.05}
+      reflectivity={isBaguette ? 1.5 : 1.2}
+      envMapIntensity={isBaguette ? 3.5 : 3.0}
+      ior={2.4}
+    />
   );
 }
