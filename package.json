@@ -14,12 +14,15 @@
     "@react-three/drei": "^9.121.4",
     "@react-three/fiber": "^8.17.14",
     "@react-three/postprocessing": "^2.19.1",
+    "@types/jszip": "^3.4.1",
     "framer-motion": "^12.4.7",
+    "jszip": "^3.10.1",
     "leva": "^0.10.0",
     "next": "14.0.4",
     "postprocessing": "^6.36.6",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-dropzone": "^14.3.8",
     "three": "^0.172.0"
   },
   "devDependencies": {
