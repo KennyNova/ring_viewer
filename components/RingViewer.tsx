@@ -1723,9 +1723,9 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
         dpr={computedDpr}
         camera={{ position: [22, 40, 23], fov: 50 }}
         gl={{ 
-          antialias: !(lockedLowFps),
+          antialias: false,
           precision: "highp",
-          powerPreference: "low-power",
+          powerPreference: "default",
           failIfMajorPerformanceCaveat: false,
           preserveDrawingBuffer: true, // Required for screenshots
         }}
@@ -1884,8 +1884,8 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
         {/* Photosphere capturer */}
         <PhotosphereCapturer
           enabled={capturePhotosphere && cameraPannerComplete}
-          horizontalSteps={24}
-          verticalSteps={12}
+          horizontalSteps={48}  // Doubled from 24 to 48
+          verticalSteps={24}    // Doubled from 12 to 24
           orbitControlsRef={orbitControlsRef}
           fileName={`ring_${selectedModel.replace(/\W+/g, '_')}`}
           onComplete={() => setCapturePhotosphere(false)}

@@ -16,65 +16,132 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
   const { camera } = useThree();
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [nextImage, setNextImage] = useState<string | null>(null);
-  const [opacity, setOpacity] = useState(0);
+  const [preloadImage, setPreloadImage] = useState<string | null>(null);
+  const [opacity, setOpacity] = useState(1);
+  const [nextOpacity, setNextOpacity] = useState(0);
   const currentTextureRef = React.useRef<THREE.Texture | null>(null);
   const nextTextureRef = React.useRef<THREE.Texture | null>(null);
+  const preloadTextureRef = React.useRef<THREE.Texture | null>(null);
   const currentMeshRef = React.useRef<THREE.Mesh>(null);
   const nextMeshRef = React.useRef<THREE.Mesh>(null);
+  const preloadMeshRef = React.useRef<THREE.Mesh>(null);
   const transitionInProgress = React.useRef(false);
+  const nextImageLoaded = React.useRef(false);
+  const preloadImageLoaded = React.useRef(false);
   const groupRef = React.useRef<THREE.Group>(null);
   const targetZoom = React.useRef(1);
   const currentZoom = React.useRef(1);
+  const lastTransitionTime = React.useRef(0);
+  const TRANSITION_COOLDOWN = 150; // Minimum time between transitions in ms
   
   // Add texture cache to store preloaded textures
   const textureCache = React.useRef<Map<string, THREE.Texture>>(new Map());
-  // Keep track of last camera position to determine movement direction
   const lastCameraPosition = React.useRef<THREE.Vector3>(new THREE.Vector3());
-  // Track camera velocity for prediction
   const cameraVelocity = React.useRef<THREE.Vector3>(new THREE.Vector3());
-  // Track preloading status
   const preloadingInProgress = React.useRef<Set<string>>(new Set());
-  // Maximum cache size - increased to handle more images
-  const MAX_CACHE_SIZE = 24;
+  const MAX_CACHE_SIZE = 48;
 
-  // Function to preload an image and store in cache
-  const preloadImage = (url: string) => {
-    // Skip if already in cache or currently preloading
+  // Enhanced texture loading function with promise
+  const loadTexture = (url: string): Promise<THREE.Texture> => {
+    return new Promise((resolve, reject) => {
+      if (textureCache.current.has(url)) {
+        resolve(textureCache.current.get(url)!);
+        return;
+      }
+
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        url,
+        (texture) => {
+          if (textureCache.current.size >= MAX_CACHE_SIZE) {
+            const firstKey = textureCache.current.keys().next().value;
+            if (firstKey && firstKey !== currentImage && firstKey !== nextImage && firstKey !== preloadImage) {
+              const oldTexture = textureCache.current.get(firstKey);
+              if (oldTexture) oldTexture.dispose();
+              textureCache.current.delete(firstKey);
+            }
+          }
+          textureCache.current.set(url, texture);
+          resolve(texture);
+        },
+        undefined,
+        reject
+      );
+    });
+  };
+
+  // Function to preload texture
+  const preloadTexture = async (url: string) => {
     if (textureCache.current.has(url) || preloadingInProgress.current.has(url)) {
       return;
     }
     
     preloadingInProgress.current.add(url);
-    
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      url,
-      (texture) => {
-        // Add to cache if not full
-        if (textureCache.current.size >= MAX_CACHE_SIZE) {
-          // Remove oldest entry (first key) if cache is full
-          const firstKey = textureCache.current.keys().next().value;
-          if (firstKey) { // Add null check for TypeScript
-            const texture = textureCache.current.get(firstKey);
-            if (texture && firstKey !== currentImage && firstKey !== nextImage) {
-              texture.dispose();
-              textureCache.current.delete(firstKey);
-            }
-          }
-        }
-        
-        textureCache.current.set(url, texture);
-        preloadingInProgress.current.delete(url);
-      },
-      undefined, // onProgress callback not needed
-      (error) => {
-        console.error("Error preloading texture:", error);
-        preloadingInProgress.current.delete(url);
-      }
-    );
+    try {
+      await loadTexture(url);
+    } catch (error) {
+      console.error("Error preloading texture:", error);
+    } finally {
+      preloadingInProgress.current.delete(url);
+    }
   };
 
-  // Function to predict which images will be needed next based on camera movement
+  // Function to start transition only when next image is ready
+  const startTransition = async (targetImage: string) => {
+    if (transitionInProgress.current || !targetImage || targetImage === currentImage) return;
+    
+    const now = performance.now();
+    if (now - lastTransitionTime.current < TRANSITION_COOLDOWN) return;
+
+    try {
+      // Keep current image visible while loading next
+      const texture = await loadTexture(targetImage);
+      
+      // Only start transition once we have the texture
+      nextTextureRef.current = texture;
+      setNextImage(targetImage);
+      
+      // Start the transition
+      transitionInProgress.current = true;
+      lastTransitionTime.current = now;
+      
+      let startTime = performance.now();
+      const duration = 300;
+      
+      const animate = () => {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Smooth easing function
+        const eased = progress < 0.5 
+          ? 2 * progress * progress 
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        
+        setOpacity(1 - eased);
+        
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          // Only swap images after transition is complete
+          if (currentTextureRef.current !== nextTextureRef.current) {
+            currentTextureRef.current = nextTextureRef.current;
+          }
+          setCurrentImage(targetImage);
+          setOpacity(1);
+          transitionInProgress.current = false;
+          nextTextureRef.current = null;
+          setNextImage(null);
+        }
+      };
+      
+      requestAnimationFrame(animate);
+    } catch (error) {
+      console.error("Error during image transition:", error);
+      transitionInProgress.current = false;
+    }
+  };
+
+  // Update the predictNextImages function to use the new name
   const predictNextImages = () => {
     if (!camera || images.length === 0) return;
     
@@ -92,9 +159,9 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
     const theta = Math.acos(camera.position.y / camera.position.length());
     
     // Convert to the same units as our image coordinates
-    // Adjust for 24 horizontal positions (0-23) and 12 vertical positions (0-11)
-    const currentH = ((phi / (Math.PI * 2)) * 24 + 24) % 24;
-    const currentV = (theta / Math.PI) * 12;
+    // Adjust for 48 horizontal positions (0-47) and 24 vertical positions (0-23)
+    const currentH = ((phi / (Math.PI * 2)) * 48 + 48) % 48;
+    const currentV = (theta / Math.PI) * 24;
     
     // Convert velocity to h,v space to predict direction
     const spherical = new THREE.Spherical().setFromVector3(cameraVelocity.current);
@@ -102,18 +169,18 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
     const thetaVelocity = spherical.theta;
     
     // Predict h,v movement direction
-    const hVelocity = (phiVelocity / (Math.PI * 2)) * 24;
-    const vVelocity = (thetaVelocity / Math.PI) * 12;
+    const hVelocity = (phiVelocity / (Math.PI * 2)) * 48;
+    const vVelocity = (thetaVelocity / Math.PI) * 24;
     
     // Find images in predicted direction (weighted by distance and alignment with camera movement)
     const candidateImages = images.map(img => {
       // Calculate base distance - handling wraparound for horizontal position
-      const dh = Math.min(Math.abs(img.h - currentH), 24 - Math.abs(img.h - currentH));
+      const dh = Math.min(Math.abs(img.h - currentH), 48 - Math.abs(img.h - currentH));
       const dv = Math.abs(img.v - currentV);
       const distance = Math.sqrt(dh * dh + dv * dv);
       
       // Calculate direction alignment with camera movement
-      const deltaH = ((img.h - currentH + 24) % 24) > 12 ? (img.h - currentH - 24) : (img.h - currentH);
+      const deltaH = ((img.h - currentH + 48) % 48) > 24 ? (img.h - currentH - 48) : (img.h - currentH);
       const deltaV = img.v - currentV;
       
       // Higher score for images in direction of movement
@@ -129,7 +196,7 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
       if (distance < 1) {
         // Find adjacent images
         const isAdjacent = (
-          (Math.abs(deltaH) <= 1 || Math.abs(deltaH) >= 23) && // Adjacent horizontally (including wraparound)
+          (Math.abs(deltaH) <= 1 || Math.abs(deltaH) >= 47) && // Adjacent horizontally (including wraparound)
           Math.abs(deltaV) <= 1                                // Adjacent vertically
         );
         
@@ -144,10 +211,10 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
     // Sort by score and preload top candidates
     candidateImages.sort((a, b) => a.score - b.score);
     
-    // Preload the best candidates (up to 8) - increased from 5 to handle more transition points
-    const preloadLimit = 8;
+    // Preload the best candidates
+    const preloadLimit = 16;
     candidateImages.slice(0, preloadLimit).forEach(candidate => {
-      preloadImage(candidate.url);
+      preloadTexture(candidate.url);
     });
   };
 
@@ -160,9 +227,9 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
     const theta = Math.acos(camera.position.y / camera.position.length());
 
     // Convert to the same units as our image coordinates
-    // Updated to match the 24 horizontal steps and 12 vertical steps
-    const h = ((phi / (Math.PI * 2)) * 24 + 24) % 24;
-    const v = (theta / Math.PI) * 12;
+    // Updated to match the 48 horizontal steps and 24 vertical steps
+    const h = ((phi / (Math.PI * 2)) * 48 + 48) % 48;
+    const v = (theta / Math.PI) * 24;
 
     // Find the closest image
     let closestImage = images[0];
@@ -170,7 +237,7 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
 
     images.forEach(img => {
       // Calculate distance with wraparound handling for horizontal position
-      const dh = Math.min(Math.abs(img.h - h), 24 - Math.abs(img.h - h));
+      const dh = Math.min(Math.abs(img.h - h), 48 - Math.abs(img.h - h));
       const dv = Math.abs(img.v - v);
       const distance = Math.sqrt(dh * dh + dv * dv);
 
@@ -183,18 +250,30 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
     return closestImage.url;
   };
 
-  // Update current image based on camera position and make images face camera
+  // Update current image based on camera position
   useFrame((state, delta) => {
-    // Preload prediction logic - run every frame for responsive preloading
-    predictNextImages();
+    if (typeof predictNextImages === 'function') {
+      predictNextImages();
+    }
     
-    // Existing image selection logic
     if (!transitionInProgress.current) {
       const closestImage = findClosestImage();
-      if (closestImage !== currentImage && closestImage !== nextImage) {
-        setNextImage(closestImage);
-        transitionInProgress.current = true;
-        setOpacity(0);
+      if (closestImage && closestImage !== currentImage) {
+        if (closestImage === nextImage && nextImageLoaded.current) {
+          // Next image is already loaded, start transition
+          if (typeof startTransition === 'function') {
+            startTransition(closestImage);
+          }
+        } else if (closestImage !== nextImage) {
+          // Load as next image if not already loading
+          loadTexture(closestImage).then((texture) => {
+            if (nextTextureRef.current !== texture) {
+              nextTextureRef.current = texture;
+              setNextImage(closestImage);
+              nextImageLoaded.current = true;
+            }
+          });
+        }
       }
     }
 
@@ -206,12 +285,10 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
 
     // Make the group face the camera
     if (groupRef.current) {
-      // Calculate the direction from the group to the camera
       const direction = new THREE.Vector3();
       camera.getWorldPosition(direction);
       direction.sub(groupRef.current.position);
 
-      // Create a rotation matrix that looks at the camera
       const lookMatrix = new THREE.Matrix4();
       lookMatrix.lookAt(
         direction,
@@ -219,12 +296,10 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
         new THREE.Vector3(0, 1, 0)
       );
 
-      // Convert the matrix to a quaternion and apply it
       const quaternion = new THREE.Quaternion();
       quaternion.setFromRotationMatrix(lookMatrix);
       groupRef.current.quaternion.copy(quaternion);
 
-      // Adjust the scale based on distance and zoom level
       const distance = direction.length();
       const scale = distance * 0.4 * currentZoom.current;
       groupRef.current.scale.set(scale, scale, scale);
@@ -428,18 +503,18 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
   
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
-      {/* Current image mesh */}
+      {/* Current image mesh - always visible */}
       <mesh ref={currentMeshRef}>
         <planeGeometry args={[10, 10 / aspectRatio]} />
         <meshBasicMaterial 
           map={currentTextureRef.current}
           side={THREE.DoubleSide}
           transparent={true}
-          opacity={1 - opacity}
+          opacity={opacity}
         />
       </mesh>
 
-      {/* Next image mesh (for transition) */}
+      {/* Next image mesh - only rendered when ready */}
       {nextImage && nextTextureRef.current && (
         <mesh ref={nextMeshRef}>
           <planeGeometry args={[10, 10 / aspectRatio]} />
@@ -447,7 +522,20 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
             map={nextTextureRef.current}
             side={THREE.DoubleSide}
             transparent={true}
-            opacity={opacity}
+            opacity={1 - opacity}
+          />
+        </mesh>
+      )}
+
+      {/* Preload mesh (invisible but ready for next transition) */}
+      {preloadImage && preloadTextureRef.current && (
+        <mesh ref={preloadMeshRef} visible={false}>
+          <planeGeometry args={[10, 10 / aspectRatio]} />
+          <meshBasicMaterial 
+            map={preloadTextureRef.current}
+            side={THREE.DoubleSide}
+            transparent={true}
+            opacity={0}
           />
         </mesh>
       )}
