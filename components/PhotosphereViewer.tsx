@@ -466,6 +466,7 @@ const PhotosphereViewer: React.FC<PhotosphereViewerProps> = ({ images, onClose }
       <Canvas
         camera={{ position: [30, 0, 0], fov: 45 }}
         style={{ background: 'black' }}
+        gl={{ powerPreference: 'default', antialias: false }}
       >
         <ImageDisplay images={images} />
         <OrbitControls 
