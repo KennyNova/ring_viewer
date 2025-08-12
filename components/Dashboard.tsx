@@ -126,22 +126,33 @@ function CategorySlider({ category, models }: { category: string; models: string
             }}
           >
             {duplicatedModels.map((model, index) => {
-              const gifPath = `/gifs/${category}/${model.replace(".glb", ".gif")}`;
+              const modelSlug = model.replace(".glb", "");
+              const imagePath = `/images/${category}/${modelSlug}.png`;
+              const gifPath = `/gifs/${category}/${modelSlug}.gif`;
               
               // Function to check if file exists (this runs on client)
-              const [imageExists, setImageExists] = useState(true);
+              const [imageExists, setImageExists] = useState(false);
+              const [gifExists, setGifExists] = useState(false);
               
               useEffect(() => {
+                // Check if image exists
                 const img = new Image();
                 img.onload = () => setImageExists(true);
-                img.onerror = () => setImageExists(false);
-                img.src = gifPath;
-              }, [gifPath]);
+                img.onerror = () => {
+                  // If image doesn't exist, check for gif
+                  const gifImg = new Image();
+                  gifImg.onload = () => setGifExists(true);
+                  gifImg.onerror = () => setGifExists(false);
+                  gifImg.src = gifPath;
+                };
+                img.src = imagePath;
+              }, [imagePath, gifPath]);
 
-              const imageSrc = imageExists ? gifPath : "/ring-placeholder.gif";
+              // Use image if exists, then gif, then placeholder
+              const imageSrc = imageExists ? imagePath : (gifExists ? gifPath : "/ring-placeholder.gif");
               
               return (
-                <Link key={index} href={`/${category}/${model.replace(".glb", "")}`}>
+                <Link key={index} href={`/${category}/${modelSlug}`}>
                   <motion.div
                     variants={cardVariants}
                     whileHover={{ 
@@ -163,7 +174,7 @@ function CategorySlider({ category, models }: { category: string; models: string
                   >
                     <img
                       src={imageSrc}
-                      alt={model}
+                      alt={modelSlug.split("-").join(" ")}
                       style={{ 
                         width: "100%", 
                         borderRadius: "10px",
@@ -179,7 +190,7 @@ function CategorySlider({ category, models }: { category: string; models: string
                       fontWeight: "300",
                       letterSpacing: "0.05em"
                     }}>
-                      {model.replace(".glb", "").split("-").join(" ")}
+                      {modelSlug.split("-").join(" ")}
                     </p>
                   </motion.div>
                 </Link>

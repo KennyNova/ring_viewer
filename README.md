@@ -14,11 +14,50 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3002](http://localhost:3002) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Docker Deployment
+
+This project includes Docker configuration for easy deployment. Follow these steps to deploy using Docker:
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/) (optional, but recommended)
+
+### Building and Running with Docker
+
+1. Build the Docker image:
+
+```bash
+docker build -t ring-viewer .
+```
+
+2. Run the container:
+
+```bash
+docker run -p 3003:3002 ring-viewer
+```
+
+The application will be available at [http://localhost:3003](http://localhost:3003).
+
+### Using Docker Compose
+
+Alternatively, you can use Docker Compose for a simpler deployment:
+
+```bash
+docker-compose up -d
+```
+
+To stop the container:
+
+```bash
+docker-compose down
+```
 
 ## Learn More
 

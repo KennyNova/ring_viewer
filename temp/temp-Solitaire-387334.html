@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ring Preview</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      text-align: center;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      width: 80%;
+      max-width: 500px;
+    }
+    .ring-icon {
+      margin: 20px auto;
+      width: 120px;
+      height: 120px;
+      position: relative;
+    }
+    .ring-circle {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      border: 15px solid #FFD700;
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+    }
+    .gem {
+      position: absolute;
+      top: 15px;
+      left: 45px;
+      width: 30px;
+      height: 30px;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.2) 100%);
+      border-radius: 3px;
+      transform: rotate(45deg);
+      box-shadow: 0 0 10px rgba(255,255,255,0.8);
+    }
+    .category {
+      color: #666;
+      font-size: 18px;
+      margin-bottom: 5px;
+    }
+    .model-name {
+      color: #333;
+      font-size: 26px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+    .sparkle {
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+      animation: twinkle 1.5s infinite;
+    }
+    .sparkle:nth-child(1) {
+      width: 8px;
+      height: 8px;
+      top: 20px;
+      left: 35px;
+      animation-delay: 0s;
+    }
+    .sparkle:nth-child(2) {
+      width: 6px;
+      height: 6px;
+      top: 15px;
+      right: 40px;
+      animation-delay: 0.3s;
+    }
+    .sparkle:nth-child(3) {
+      width: 5px;
+      height: 5px;
+      bottom: 30px;
+      left: 40px;
+      animation-delay: 0.6s;
+    }
+    .sparkle:nth-child(4) {
+      width: 4px;
+      height: 4px;
+      bottom: 20px;
+      right: 45px;
+      animation-delay: 0.9s;
+    }
+    @keyframes twinkle {
+      0% { opacity: 0; }
+      50% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="ring-icon">
+      <div class="ring-circle"></div>
+      <div class="gem"></div>
+      <div class="sparkle"></div>
+      <div class="sparkle"></div>
+      <div class="sparkle"></div>
+      <div class="sparkle"></div>
+    </div>
+    <div class="category">Solitaire</div>
+    <div class="model-name">387334</div>
+  </div>
+</body>
+</html>
+  

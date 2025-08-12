@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ring Renderer</title>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; background: white; }
+    canvas { width: 100%; height: 100%; display: block; }
+    #info { display: none; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="info">Loading...</div>
+  <script>
+    // Flag for completion
+    let renderComplete = false;
+
+    // Set up scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+    
+    // Set up camera
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 10);
+    
+    // Set up renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+    
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight2.position.set(-1, -1, -1);
+    scene.add(directionalLight2);
+    
+    // Set up controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1;
+    
+    // Load model
+    const loader = new THREE.GLTFLoader();
+    
+    loader.load(
+      '/3d/Solitaire/387373.glb',
+      function(gltf) {
+        // Center the model in the scene
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        
+        // Reset model position to center
+        gltf.scene.position.set(-center.x, -center.y, -center.z);
+        
+        // Resize model to fit view
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim > 0) {
+          const scale = 5 / maxDim;
+          gltf.scene.scale.set(scale, scale, scale);
+        }
+        
+        // Position camera to get a good view
+        camera.position.set(5, 5, 5);
+        controls.update();
+        
+        // Add to scene
+        scene.add(gltf.scene);
+        
+        // Flag as complete after a short delay to ensure model is fully rendered
+        setTimeout(() => {
+          renderComplete = true;
+          document.getElementById('info').textContent = 'Render complete';
+        }, 2000);
+      },
+      function(xhr) {
+        document.getElementById('info').textContent = 'Loading: ' + Math.floor(xhr.loaded / xhr.total * 100) + '%';
+      },
+      function(error) {
+        document.getElementById('info').textContent = 'Error loading model: ' + error.message;
+        // Create a fallback object
+        const geometry = new THREE.TorusGeometry(2, 0.5, 16, 100);
+        const material = new THREE.MeshStandardMaterial({ 
+          color: 0xffd700,
+          metalness: 1.0,
+          roughness: 0.1
+        });
+        const ring = new THREE.Mesh(geometry, material);
+        scene.add(ring);
+        
+        setTimeout(() => {
+          renderComplete = true;
+        }, 1000);
+      }
+    );
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
+  

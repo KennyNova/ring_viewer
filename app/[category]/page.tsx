@@ -33,7 +33,7 @@ export default function CategoryPage({ params }: { params: { category: string } 
         </Link>
       </div>
       <div className="title-container">
-        <h1 className="title-text">
+        <h1 className="title-text" style={{ fontSize: "5vw", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {category}
         </h1>
       </div>

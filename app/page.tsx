@@ -2,6 +2,11 @@ import { readdirSync, statSync } from "fs";
 import { join } from "path";
 import Link from "next/link";
 import HoverableDiv from "@/components/HoverableDiv";
+import RandomRingButton from '@/components/RandomRingButton';
+import dynamic from 'next/dynamic';
+
+// Import ThumbnailGenerator with client-side rendering only
+const ThumbnailGenerator = dynamic(() => import('@/components/ThumbnailGenerator'), { ssr: false });
 
 // Preload HDR file so it's cached when the user selects a model
 export const metadata = {
@@ -56,6 +61,21 @@ export default function Home() {
         <h1 className="title-text">
           Explore Our Collection
         </h1>
+        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <Link href="/thumbnails">
+            <button style={{
+              backgroundColor: '#8b7355',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              padding: '8px 15px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+            }}>
+              Manage Thumbnails
+            </button>
+          </Link>
+        </div>
       </div>
       <div style={{
         display: "flex",
@@ -92,6 +112,12 @@ export default function Home() {
           </Link>
         ))}
       </div>
+      
+      {/* Use the new RandomRingButton which forces a new random selection each time */}
+      <RandomRingButton />
+      
+      {/* Add the ThumbnailGenerator component */}
+      <ThumbnailGenerator />
     </div>
   );
 }
