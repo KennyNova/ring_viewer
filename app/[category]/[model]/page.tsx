@@ -21,7 +21,6 @@ export default function ModelViewerPage({
   return (
     <div className="min-h-screen" style={{ position: "relative" }}>
       <RingViewer
-        models={[selectedModel]}
         selectedModel={selectedModel}
         category={category}
       />
