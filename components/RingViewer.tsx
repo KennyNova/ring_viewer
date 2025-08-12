@@ -3,24 +3,22 @@
 import { useEffect, useRef, Suspense } from "react";
 import { useFrame } from '@react-three/fiber'
 import * as THREE from "three";
-import { Canvas, useThree, useLoader } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
   useGLTF,
   Stats,
   useProgress,
-  Html,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import React, { createContext, useContext, useState } from 'react';
 import { Leva } from "leva";
-import { CubeTextureLoader } from "three";
 
 declare global {
   interface Window {
     __LEVA__: {
-      setSettings: (settings: { hidden?: boolean, collapsed?: boolean } | ((prev: any) => any)) => void;
+      setSettings: (settings: { hidden?: boolean, collapsed?: boolean } | ((prev: unknown) => unknown)) => void;
     };
   }
 }
@@ -113,7 +111,7 @@ export function PerformanceMonitor({
             const newFactor = Math.max(0, factor - adjustmentFactor);
             setFactor(newFactor);
             flipCount.current++;
-            onDecline &&
+            if (onDecline) {
               onDecline({
                 fps: finalAvg,
                 factor: newFactor,
@@ -121,12 +119,13 @@ export function PerformanceMonitor({
                 frames: frames.current,
                 averages: averages.current,
               });
+            }
           } else if (finalAvg > upper) {
             const adjustmentFactor = step * ((finalAvg - upper) / upper);
             const newFactor = Math.min(1, factor + adjustmentFactor);
             setFactor(newFactor);
             flipCount.current++;
-            onIncline &&
+            if (onIncline) {
               onIncline({
                 fps: finalAvg,
                 factor: newFactor,
@@ -134,10 +133,11 @@ export function PerformanceMonitor({
                 frames: frames.current,
                 averages: averages.current,
               });
+            }
           }
           lastUpdateTime.current = now;
         }
-        onChange &&
+        if (onChange) {
           onChange({
             fps: finalAvg,
             factor: factor,
@@ -145,9 +145,10 @@ export function PerformanceMonitor({
             frames: frames.current,
             averages: averages.current,
           });
+        }
         averages.current = [];
         if (flipCount.current >= flipflops) {
-          onFallback &&
+          if (onFallback) {
             onFallback({
               fps: finalAvg,
               factor: factor,
@@ -155,6 +156,7 @@ export function PerformanceMonitor({
               frames: frames.current,
               averages: averages.current,
             });
+          }
         }
       }
     }
@@ -238,27 +240,40 @@ function useEnvironment() {
   return ready;
 }
 
-function Diamond(props: any) {
+function Diamond(props: {
+  geometry: THREE.BufferGeometry;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+  isOval?: boolean;
+}) {
   const { scene } = useThree();
   const { isOval = false } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const isIOS = typeof navigator !== "undefined" && 
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
+     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
   const environmentReady = useEnvironment();
   
-  // Optimized configuration for the refraction material.
+  // Enhanced configuration for mobile/iOS optimization
   const config = {
-    bounces: isOval ? 1 : 3,
-    aberrationStrength: isOval ? 0.0 : 0.01,
+    // Reduce bounces significantly on mobile/iOS to prevent context loss
+    bounces: isOval ? 1 : (isMobile || isIOS ? 1 : 3),
+    // Reduce aberrationStrength on mobile for better performance
+    aberrationStrength: isOval ? 0.0 : (isMobile || isIOS ? 0.005 : 0.01),
     ior: 2.75,
     fresnel: 1,
     color: "white",
     transmission: 0,
     thickness: isOval ? 0.3 : 0.5,
     roughness: 0,
-    clearcoat: isOval ? 0 : 0.1,
-    clearcoatRoughness: isOval ? 0 : 0.1,
+    clearcoat: isOval ? 0 : (isMobile || isIOS ? 0.05 : 0.1),
+    clearcoatRoughness: isOval ? 0 : (isMobile || isIOS ? 0.05 : 0.1),
     attenuationDistance: 1,
     attenuationColor: "#ffffff",
+    // Enable fastChroma on mobile as recommended
+    fastChroma: isMobile || isIOS,
   };
 
   // Always use standard material if environment is not ready
@@ -293,11 +308,11 @@ function Diamond(props: any) {
       rotation={props.rotation}
       scale={props.scale}
     >
-      <MeshRefractionMaterial as any
+      <MeshRefractionMaterial
         envMap={scene.environment as THREE.CubeTexture}
         {...config} 
         toneMapped={false}
-        // @ts-ignore: blur prop is not defined in the MeshRefractionMaterial type
+        // @ts-expect-error: blur prop is not defined in the MeshRefractionMaterial type
         blur={blurToUse}
         flatShading={perfFactor < 0.7}
       />
@@ -306,7 +321,17 @@ function Diamond(props: any) {
 }
 
 // AnimatedStandardMaterial component to gradually animate the color change
-function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props }: any) {
+function AnimatedStandardMaterial({ 
+  targetColor, 
+  metalness, 
+  roughness, 
+  ...props 
+}: { 
+  targetColor: string; 
+  metalness: number; 
+  roughness: number; 
+  [key: string]: unknown; 
+}) {
   const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
   // Store the target color in a ref to persist between renders
   const targetColorRef = useRef(new THREE.Color(targetColor));
@@ -321,7 +346,7 @@ function AnimatedStandardMaterial({ targetColor, metalness, roughness, ...props 
     if (materialRef.current) {
       materialRef.current.color.set(targetColor);
     }
-  }, []);
+  }, [targetColor]);
  
   const speed = 3; // Adjust this speed factor as needed
   useFrame((state, delta) => {
@@ -355,18 +380,28 @@ function RingModel({
   const gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
   const { nodes } = gltf;
   const ringRef = useRef<THREE.Group>(null!);
+  
+  // State to track accent band detection
+  const [hasAccentBand, setHasAccentBand] = useState(false);
+  
+  // Notify parent component when accent band detection changes
+  useEffect(() => {
+    if (onAccentBandDetected) {
+      onAccentBandDetected(hasAccentBand);
+    }
+  }, [hasAccentBand, onAccentBandDetected]);
 
   // Log the nodes to the console
   console.log("3D Model Nodes:", nodes);
 
   // Node visibility controls
   const meshNodes = Object.entries(nodes).filter(
-    ([_, node]) => node instanceof THREE.Mesh
+    ([, node]) => node instanceof THREE.Mesh
   );
   
   const visibilityControls = useControls('Node Visibility', 
     Object.fromEntries(
-      meshNodes.map(([name, _]) => [ name, true ])
+      meshNodes.map(([name]) => [ name, true ])
     )
   );
 
@@ -460,12 +495,12 @@ function RingModel({
   console.log("Primary Band Nodes:", primaryBandNodes.length);
   console.log("Accent Band Nodes:", accentBandNodes.length);
 
-  // Notify parent component if we found accent bands
-  useEffect(() => {
-    if (onAccentBandDetected) {
-      onAccentBandDetected(accentBandNodes.length > 0);
-    }
-  }, [accentBandNodes.length, onAccentBandDetected]);
+  // Update accent band detection state when nodes change
+  if (hasAccentBand !== (accentBandNodes.length > 0)) {
+    setHasAccentBand(accentBandNodes.length > 0);
+  }
+
+
 
   return (
     <group ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
@@ -601,7 +636,6 @@ function darkenColor(color: string): string {
 }
 
 interface RingViewerProps {
-  models: string[];
   selectedModel: string;
   category: string;
 }
@@ -609,11 +643,16 @@ interface RingViewerProps {
 // Import the needed component from @react-three/drei
 import { MeshRefractionMaterial } from "@react-three/drei";
 
-export default function RingViewer({ models, selectedModel, category }: RingViewerProps) {
+export default function RingViewer({ selectedModel, category }: RingViewerProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isSafari =
     typeof navigator !== "undefined" &&
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  
+  // iOS detection for context loss prevention
+  const isIOS = typeof navigator !== "undefined" && 
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
+     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
   
   // Add the usePerformance hook to get the factor value
   const { factor } = usePerformance();
@@ -631,7 +670,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
 
   // Pre-test to measure device performance
   useEffect(() => {
-    let startTime = performance.now();
+    const startTime = performance.now();
     let frameCount = 0;
     let animationFrameId: number;
     
@@ -669,7 +708,17 @@ export default function RingViewer({ models, selectedModel, category }: RingView
 
   // Compute quality settings based on measured performance
   const lockedLowFps = initialFps !== null ? initialFps < 30 : false;
-  const computedDpr = lockedLowFps ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
+  
+  // Enhanced mobile/iOS DPR optimization for GPU load reduction
+  const computedDpr = (() => {
+    if (isIOS || isMobile) {
+      // Lower DPR for iOS and mobile to prevent context loss
+      return lockedLowFps ? 0.6 : (factor < 0.5 ? 0.8 : 1);
+    }
+    // Desktop behavior remains the same
+    return lockedLowFps ? 0.8 : (factor < 0.5 ? 1 : ([1, 2] as [number, number]));
+  })();
+  
   const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : 2.2;
 
   // Handle accent band detection
@@ -963,15 +1012,19 @@ export default function RingViewer({ models, selectedModel, category }: RingView
       <Canvas 
         dpr={computedDpr}
         camera={{ position: [22, 40, 23], fov: 50 }}
-        gl={{ antialias: !lockedLowFps, precision: isSafari ? "mediump" : "highp" }}
+        gl={{ 
+          powerPreference: 'default',
+          antialias: isIOS ? false : !lockedLowFps, // Turn off MSAA on iOS
+          precision: isSafari ? "mediump" : "highp" 
+        }}
         style={{ background: 'white' }}
         onCreated={(state) => {
           const { gl } = state;
           if (isSafari) {
-            const glContext = gl.getContext ? gl.getContext() : (gl as any).context;
+            const glContext = gl.getContext ? gl.getContext() : (gl as unknown as { context: WebGLRenderingContext }).context;
             if (glContext) {
               const originalGetShaderPrecisionFormat = glContext.getShaderPrecisionFormat.bind(glContext);
-              glContext.getShaderPrecisionFormat = (shaderType: any, precisionType: any) => {
+              glContext.getShaderPrecisionFormat = (shaderType: number, precisionType: number) => {
                 const result = originalGetShaderPrecisionFormat(shaderType, precisionType);
                 if (result === null) {
                   return { rangeMin: 0, rangeMax: 0, precision: 0 };
@@ -991,7 +1044,7 @@ export default function RingViewer({ models, selectedModel, category }: RingView
           />
           
           <PerformanceMonitor
-            bounds={(fps) => [50, 60]}
+            bounds={() => [50, 60]}
             ms={500}
             iterations={5}
             step={0.2}
