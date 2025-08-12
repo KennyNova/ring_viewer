@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
@@ -48,54 +47,35 @@ export default function RenderPage() {
       };
     }
   }, [category, model]);
-
-  // Track successful model loading
+  
+  // Auto-notify when model appears to be loaded
   useEffect(() => {
-    if (category && model) {
-      const checkSuccess = setInterval(() => {
-        // If we have at least one diamond and one band, consider it a success
-        const diamondNodes = document.querySelectorAll('.diamond-material');
-        const bandNodes = document.querySelectorAll('.band-material');
-        
-        if (diamondNodes.length > 0 && bandNodes.length > 0) {
+    if (typeof window !== 'undefined' && category && model && !successRef.current) {
+      // Check for successful render every 500ms
+      const checkInterval = setInterval(() => {
+        const canvas = document.querySelector('canvas');
+        if (canvas && !loading) {
+          console.log('Canvas detected, marking renderer as ready');
+          window.rendererReady = true;
           successRef.current = true;
-          window.modelLoadSuccess = true;
-          clearInterval(checkSuccess);
-          
-          // Give it a bit more time to render completely before signaling ready
-          setTimeout(() => {
-            window.rendererReady = true;
-            setReady(true);
-          }, 1000);
+          setReady(true);
+          clearInterval(checkInterval);
         }
       }, 500);
       
-      return () => clearInterval(checkSuccess);
+      return () => clearInterval(checkInterval);
     }
-  }, [category, model]);
+  }, [category, model, loading]);
   
-  // Log what's happening for debugging
-  useEffect(() => {
-    if (category && model) {
-      console.log('Render page received:', { category, model });
-    }
-  }, [category, model]);
-
-  // For RingViewer, we need to handle the model name WITHOUT .glb
-  // because RingViewer will add it internally
-  const cleanModelName = (name) => {
-    // Remove .glb extension if present
-    return name ? name.toString().replace(/\.glb$/i, '') : '';
-  };
-
-  // Hide UI elements we don't want in the image
+  // CSS to hide UI elements for clean screenshots
   const hideUIStyles = {
-    '.band-color-controls': 'display: none !important',
-    '.controls-container': 'display: none !important',
-    '.bottom-text': 'display: none !important',
-    '.diamond-color-controls': 'display: none !important',
-    '.bottom-right-controls': 'display: none !important',
-    '.leva-container': 'display: none !important',
+    '.leva-c-lfRhqk': 'display: none !important;',  // Hide Leva UI panel
+    '.stats-bottom-right': 'display: none !important;', // Hide stats
+    'button': 'display: none !important;', // Hide all buttons
+    'div[style*="position: absolute"]': 'display: none !important;', // Hide positioned UI elements
+    'p[style*="position: absolute"]': 'display: none !important;', // Hide positioned text
+    'label': 'display: none !important;', // Hide labels
+    '[data-leva-id]': 'display: none !important;', // Hide Leva components
   };
 
   // Simple styles to optimize for screenshot
@@ -133,5 +113,18 @@ export default function RenderPage() {
       )}
     </div>
   );
+}
+
+// Helper function to clean model name
+function cleanModelName(modelName) {
+  if (!modelName) return '';
+  
+  // If it already ends with .glb, return as is
+  if (modelName.toLowerCase().endsWith('.glb')) {
+    return modelName;
+  }
+  
+  // Otherwise return as is (without adding extension)
+  return modelName;
 }
     

@@ -21,6 +21,7 @@ import { CombinedLoader } from './DiamondLoader';
 import dynamic from 'next/dynamic';
 import { MeshRefractionMaterial } from "@react-three/drei";
 import JSZip from 'jszip';
+import Thumbnailer from './Thumbnailer';
 
 // Import the PhotosphereViewer type
 import type { FC } from 'react';
@@ -1249,6 +1250,9 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
   const [capturePhotosphere, setCapturePhotosphere] = useState(false);
   const [viewingPhotosphere, setViewingPhotosphere] = useState(false);
   const [photosphereImages, setPhotosphereImages] = useState<{url: string, h: number, v: number}[]>([]);
+  const [captureThumbnail, setCaptureThumbnail] = useState(false);
+  const [thumbnailStatus, setThumbnailStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
   
   // Refs
   const orbitControlsRef = useRef<any>(null);
@@ -1430,6 +1434,22 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
       </div>
     );
   }
+
+  // Add the following handler functions after other handler functions (around line 1403)
+  const handleThumbnailComplete = useCallback((success: boolean) => {
+    setCaptureThumbnail(false);
+    setThumbnailStatus(success ? 'success' : 'error');
+    
+    // Reset status after 3 seconds
+    setTimeout(() => {
+      setThumbnailStatus('idle');
+      setThumbnailError(null);
+    }, 3000);
+  }, []);
+
+  const handleThumbnailError = useCallback((error: string) => {
+    setThumbnailError(error);
+  }, []);
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
@@ -1890,6 +1910,16 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
           fileName={`ring_${selectedModel.replace(/\W+/g, '_')}`}
           onComplete={() => setCapturePhotosphere(false)}
         />
+
+        {/* Thumbnail generator */}
+        <Thumbnailer
+          enabled={captureThumbnail && cameraPannerComplete}
+          orbitControlsRef={orbitControlsRef}
+          category={category}
+          model={selectedModel}
+          onComplete={handleThumbnailComplete}
+          onError={handleThumbnailError}
+        />
       </Canvas>
 
       {/* WebGL Error display for debugging */}
@@ -2173,6 +2203,20 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
           Capture Photosphere
         </button>
         
+        <button
+          onClick={() => setCaptureThumbnail(true)}
+          style={{
+            background: "#333",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            padding: "5px 10px",
+            cursor: "pointer"
+          }}
+        >
+          Generate Thumbnail
+        </button>
+        
         <label
           style={{
             background: "#333",
@@ -2213,6 +2257,26 @@ function RingViewerComponent({ models, selectedModel, category }: RingViewerProp
       >
         Return to 3D View
       </button>
+
+      {/* Thumbnail status message */}
+      {thumbnailStatus !== 'idle' && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            background: thumbnailStatus === 'success' ? "rgba(0, 128, 0, 0.8)" : "rgba(255, 0, 0, 0.8)",
+            color: "white",
+            padding: "10px 15px",
+            borderRadius: "5px",
+            zIndex: 1000
+          }}
+        >
+          {thumbnailStatus === 'success' 
+            ? "Thumbnail saved successfully!" 
+            : `Error saving thumbnail: ${thumbnailError || 'Unknown error'}`}
+        </div>
+      )}
     </div>
   );
 }
