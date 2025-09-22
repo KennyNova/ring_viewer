@@ -19,18 +19,15 @@ export default function RandomRingButton() {
     }}>
       <div onClick={handleClick} style={{ cursor: 'pointer' }}>
         <HoverableDiv
+          className="md-gradient-btn"
           style={{
-            backgroundColor: '#D4AF37',
-            padding: '15px 30px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(139,115,85,0.2)'
+            padding: '15px 30px'
           }}
         >
           <p
             style={{
               margin: '0',
               textAlign: 'center',
-              color: '#ffffff',
               fontSize: 'clamp(1rem, 3vw, 1.5rem)',
               fontWeight: '500',
               letterSpacing: '0.1em',

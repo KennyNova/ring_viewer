@@ -37,10 +37,38 @@ export default function CategoryPage({ params }: { params: { category: string } 
           {category}
         </h1>
       </div>
+      {/* Category explainer */}
+      <div style={{
+        display: "flex",
+        justifyContent: "center",
+        margin: "20px 0 10px",
+        padding: "0 10px"
+      }}>
+        <div style={{
+          width: "100%",
+          maxWidth: "1000px",
+          background: "rgba(255,255,255,0.9)",
+          border: "1px solid rgba(139,115,85,0.15)",
+          borderRadius: "16px",
+          boxShadow: "0 8px 24px rgba(139,115,85,0.12)",
+          overflow: "hidden",
+        }}>
+          <div style={{ padding: "20px 20px" }}>
+            <div className="md-gradient-chip" style={{ display: "inline-flex" }}>Curated designs</div>
+            <p style={{
+              margin: "10px 0 0",
+              color: "#4a3f35",
+              lineHeight: 1.6
+            }}>
+              Browse {category} rings we’ve crafted in the past. Click any design to view it in 3D and experiment with metal options.
+            </p>
+          </div>
+        </div>
+      </div>
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-        gap: "15px",
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: "18px",
         width: "80vw",
         maxWidth: "1200px",
         padding: "10px",
@@ -64,33 +92,32 @@ export default function CategoryPage({ params }: { params: { category: string } 
 
           return (
             <Link key={index} href={`/${category}/${modelSlug}`}> 
-              <HoverableDiv
-                style={{
-                  backgroundColor: "#f5f0eb",
-                  padding: "20px 30px",
+              <HoverableDiv className="md-glass-card md-glass-hover" style={{ cursor: "pointer", padding: "16px", borderRadius: "12px" }}>
+                <div style={{
+                  background: "rgba(220, 209, 199, 0.4)",
+                  border: "1px dashed rgba(139,115,85,0.35)",
                   borderRadius: "10px",
-                  boxShadow: "0 4px 12px rgba(139,115,85,0.1)",
-                  cursor: "pointer",
-                }}
-              >
-                <img 
-                  src={imageSrc}
-                  alt={model} 
-                  style={{ 
-                    width: "100%", 
-                    height: "auto", 
-                    objectFit: "cover", 
-                    borderRadius: "10px",
-                    aspectRatio: "1"
-                  }} 
-                />
+                  overflow: "hidden",
+                }}>
+                  <img 
+                    src={imageSrc}
+                    alt={model} 
+                    style={{ 
+                      width: "100%", 
+                      height: "auto", 
+                      objectFit: "cover", 
+                      borderRadius: "10px",
+                      aspectRatio: "1"
+                    }} 
+                  />
+                </div>
                 <p style={{
                   marginTop: "10px",
                   textAlign: "center",
-                  color: "#8b7355",
-                  fontSize: "1.5rem",
-                  fontWeight: "300",
-                  letterSpacing: "0.1em",
+                  color: "#6b5a49",
+                  fontSize: "1.05rem",
+                  fontWeight: 500,
+                  letterSpacing: "0.04em",
                   textTransform: "uppercase",
                 }}>
                   {modelSlug.split("-").join(" ")}
@@ -102,14 +129,7 @@ export default function CategoryPage({ params }: { params: { category: string } 
       </div>
       <div style={{ marginTop: "20px", textAlign: "center" }}>
         <Link href="/">
-          <button style={{
-            backgroundColor: "#D4AF37",
-            color: "white",
-            border: "none",
-            borderRadius: "5px",
-            padding: "10px 20px",
-            cursor: "pointer",
-          }}>
+          <button className="md-gradient-btn" style={{ padding: "12px 22px" }}>
             Back to Categories
           </button>
         </Link>

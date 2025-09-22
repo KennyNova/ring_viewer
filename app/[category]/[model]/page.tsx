@@ -37,30 +37,12 @@ export default function ModelViewerPage({
         }}
       >
         <Link href="/" className="block">
-          <button className="w-full"
-            style={{
-              background: "#D4AF37",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              padding: "10px 20px",
-              cursor: "pointer"
-            }}
-          >
+          <button className="w-full md-gradient-btn" style={{ padding: "10px 20px" }}>
             Back to Dashboard
           </button>
         </Link>
         <Link href={`/${category}`} className="block">
-          <button className="w-full"
-            style={{
-              background: "#D4AF37",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              padding: "10px 20px",
-              cursor: "pointer"
-            }}
-          >
+          <button className="w-full md-gradient-btn" style={{ padding: "10px 20px" }}>
             Back to {category}
           </button>
         </Link>

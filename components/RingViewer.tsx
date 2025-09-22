@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, Suspense } from "react";
-import { useFrame } from '@react-three/fiber'
+import { useFrame, invalidate } from '@react-three/fiber'
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import {
@@ -224,6 +224,8 @@ function useEnvironment() {
     // Check if environment exists initially
     if (scene.environment && scene.environment.isTexture) {
       setReady(true);
+      // Ensure an initial frame renders on demand frameloop
+      invalidate();
     }
     
     // Set up an observer to detect when the environment is set
@@ -231,6 +233,8 @@ function useEnvironment() {
       if (scene.environment && scene.environment.isTexture) {
         setReady(true);
         clearInterval(checkInterval);
+        // Render once when it becomes ready
+        invalidate();
       }
     }, 100);
     
@@ -246,38 +250,48 @@ function Diamond(props: {
   rotation: [number, number, number];
   scale: [number, number, number];
   isOval?: boolean;
+  batterySaver?: boolean;
+  qualityTier?: 'ultra' | 'high' | 'medium' | 'low';
 }) {
   const { scene } = useThree();
-  const { isOval = false } = props; 
+  const { isOval = false, batterySaver = false, qualityTier } = props; 
   const { factor: perfFactor } = usePerformance();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isIOS = typeof navigator !== "undefined" && 
     (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
   const environmentReady = useEnvironment();
+  const isLowTier = batterySaver || qualityTier === 'low' || perfFactor < 0.45 || (isMobile && perfFactor < 0.6);
   
-  // Enhanced configuration for mobile/iOS optimization
+  // Ensure a frame when geometry arrives under demand frameloop
+  useEffect(() => {
+    if (props.geometry) invalidate();
+  }, [props.geometry]);
+  
+  // Enhanced configuration for mobile/iOS optimization + quality tiering
+  const tier = qualityTier || (perfFactor > 0.8 ? 'high' : perfFactor > 0.55 ? 'medium' : 'low');
   const config = {
-    // Reduce bounces significantly on mobile/iOS to prevent context loss
-    bounces: isOval ? 1 : (isMobile || isIOS ? 1 : 3),
-    // Reduce aberrationStrength on mobile for better performance
-    aberrationStrength: isOval ? 0.0 : (isMobile || isIOS ? 0.005 : 0.01),
+    bounces: isOval ? 1 : (
+      tier === 'ultra' ? 4 : tier === 'high' ? 3 : tier === 'medium' ? 2 : 1
+    ),
+    aberrationStrength: isOval ? 0.0 : (
+      tier === 'ultra' ? 0.012 : tier === 'high' ? 0.008 : tier === 'medium' ? 0.004 : 0.002
+    ),
     ior: 2.75,
     fresnel: 1,
     color: "white",
     transmission: 0,
     thickness: isOval ? 0.3 : 0.5,
     roughness: 0,
-    clearcoat: isOval ? 0 : (isMobile || isIOS ? 0.05 : 0.1),
-    clearcoatRoughness: isOval ? 0 : (isMobile || isIOS ? 0.05 : 0.1),
+    clearcoat: isOval ? 0 : (tier === 'low' ? 0.03 : 0.08),
+    clearcoatRoughness: isOval ? 0 : (tier === 'low' ? 0.08 : 0.06),
     attenuationDistance: 1,
     attenuationColor: "#ffffff",
-    // Enable fastChroma on mobile as recommended
-    fastChroma: isMobile || isIOS,
+    fastChroma: (isMobile || isIOS) || tier !== 'ultra',
   };
 
   // Always use standard material if environment is not ready
-  if (!environmentReady || perfFactor < 0.5) {
+  if (!environmentReady || isLowTier) {
     return (
       <mesh
         castShadow={false}
@@ -286,17 +300,24 @@ function Diamond(props: {
         rotation={props.rotation}
         scale={props.scale}
       >
-        <meshStandardMaterial 
-          color="#ccc"
-          roughness={0.6}
-          metalness={0.2}
+        {/* Cheaper glassy look for battery saver/low tier */}
+        <meshPhysicalMaterial
+          color="#ffffff"
+          transmission={0.98}
+          thickness={0.5}
+          ior={2.4}
+          roughness={0.02}
+          metalness={0}
+          reflectivity={0.2}
+          clearcoat={0.1}
+          clearcoatRoughness={0.1}
         />
       </mesh>
     );
   }
   
   // Adjust blur based on performance
-  const baseBlur = isMobile ? 0.8 : 0.4;
+  const baseBlur = tier === 'ultra' ? 0.35 : tier === 'high' ? 0.3 : tier === 'medium' ? 0.25 : 0.2;
   const adjustedBlur = baseBlur + (1 - perfFactor) * 0.2;
   const blurToUse = perfFactor < 0.7 ? adjustedBlur + 0.2 : adjustedBlur;
   
@@ -321,46 +342,67 @@ function Diamond(props: {
 }
 
 // AnimatedStandardMaterial component to gradually animate the color change
-function AnimatedStandardMaterial({ 
-  targetColor, 
-  metalness, 
-  roughness, 
-  ...props 
-}: { 
-  targetColor: string; 
-  metalness: number; 
-  roughness: number; 
-  [key: string]: unknown; 
+// (Replaced by AnimatedPhysicalMaterial)
+
+// AnimatedPhysicalMaterial improves metal realism using MeshPhysicalMaterial
+function AnimatedPhysicalMaterial({ 
+  targetColor,
+  metalness,
+  roughness,
+  envMapIntensity = 1.3,
+  clearcoat = 0.45,
+  clearcoatRoughness = 0.07,
+  ior = 2.1,
+  reflectivity = 0.6,
+  ...props
+}: {
+  targetColor: string;
+  metalness: number;
+  roughness: number;
+  envMapIntensity?: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+  ior?: number;
+  reflectivity?: number;
+  [key: string]: unknown;
 }) {
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
-  // Store the target color in a ref to persist between renders
+  const materialRef = useRef<THREE.MeshPhysicalMaterial>(null!);
   const targetColorRef = useRef(new THREE.Color(targetColor));
- 
-  // Update the target color ref whenever the prop changes
+
   useEffect(() => {
     targetColorRef.current.set(targetColor);
   }, [targetColor]);
- 
-  // On the first mount, set the material's color to the target color
+
   useEffect(() => {
     if (materialRef.current) {
       materialRef.current.color.set(targetColor);
     }
   }, [targetColor]);
- 
-  const speed = 3; // Adjust this speed factor as needed
+
+  const speed = 3;
   useFrame((state, delta) => {
     if (materialRef.current) {
-      // Lerp the current color toward the stored target color
-      materialRef.current.color.lerp(targetColorRef.current, delta * speed);
+      const current = materialRef.current.color;
+      const target = targetColorRef.current;
+      const dist = Math.abs(current.r - target.r) + Math.abs(current.g - target.g) + Math.abs(current.b - target.b);
+      if (dist > 1e-3) {
+        current.lerp(target, delta * speed);
+        invalidate();
+      }
     }
   });
 
   return (
-    <meshStandardMaterial
+    <meshPhysicalMaterial
       ref={materialRef}
       metalness={metalness}
       roughness={roughness}
+      envMapIntensity={envMapIntensity}
+      clearcoat={clearcoat}
+      clearcoatRoughness={clearcoatRoughness}
+      ior={ior}
+      reflectivity={reflectivity}
+      toneMapped
       {...props}
     />
   );
@@ -370,12 +412,16 @@ function RingModel({
   modelPath, 
   selectedBandColor, 
   selectedAccentBandColor,
-  onAccentBandDetected 
+  onAccentBandDetected,
+  batterySaver,
+  qualityTier
 }: { 
   modelPath: string, 
   selectedBandColor: string,
   selectedAccentBandColor: string,
-  onAccentBandDetected?: (hasAccentBand: boolean) => void
+  onAccentBandDetected?: (hasAccentBand: boolean) => void,
+  batterySaver?: boolean,
+  qualityTier?: 'ultra' | 'high' | 'medium' | 'low'
 }) {
   const gltf = useGLTF(modelPath) as unknown as { nodes: { [key: string]: THREE.Mesh | THREE.Object3D } };
   const { nodes } = gltf;
@@ -406,14 +452,52 @@ function RingModel({
   );
 
   const bandMaterials = {
-    'Yellow Gold': { color: '#ffdc73', metalness: 1, roughness: 0.2 },
-    'Rose Gold': { color: '#d1b0aa', metalness: 1, roughness: 0.2 },
-    'White Gold': { color: '#E8E8E8', metalness: 1, roughness: 0.15 },
-    'Platinum': { color: '#E5E4E2', metalness: 1, roughness: 0.1 }
-  };
+    'Yellow Gold': {
+      color: '#D4AF37',
+      metalness: 1,
+      roughness: 0.13,
+      envMapIntensity: 1.4,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.06,
+      ior: 2.05,
+      reflectivity: 0.65
+    },
+    'Rose Gold': {
+      color: '#B76E79',
+      metalness: 1,
+      roughness: 0.14,
+      envMapIntensity: 1.35,
+      clearcoat: 0.48,
+      clearcoatRoughness: 0.07,
+      ior: 2.05,
+      reflectivity: 0.62
+    },
+    'White Gold': {
+      color: '#E0E3E7',
+      metalness: 1,
+      roughness: 0.08,
+      envMapIntensity: 1.25,
+      clearcoat: 0.42,
+      clearcoatRoughness: 0.06,
+      ior: 2.0,
+      reflectivity: 0.58
+    },
+    'Platinum': {
+      color: '#E5E4E2',
+      metalness: 1,
+      roughness: 0.06,
+      envMapIntensity: 1.2,
+      clearcoat: 0.4,
+      clearcoatRoughness: 0.055,
+      ior: 2.1,
+      reflectivity: 0.6
+    }
+  } as const;
 
   const selectedMaterial = bandMaterials[selectedBandColor as keyof typeof bandMaterials];
   const selectedAccentMaterial = bandMaterials[selectedAccentBandColor as keyof typeof bandMaterials];
+  const { factor: perfFactor } = usePerformance();
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   if (!nodes) return null;
   
@@ -504,7 +588,8 @@ function RingModel({
 
   return (
     <group ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* Primary band nodes */}
+      {/* Primary band nodes */
+      }
       {primaryBandNodes.map((node, index) => (
         visibilityControls[node.name] && (
           <mesh 
@@ -514,10 +599,15 @@ function RingModel({
             rotation={[node.rotation.x, node.rotation.y, node.rotation.z]}
             scale={node.scale.toArray()}
           >
-            <AnimatedStandardMaterial 
+            <AnimatedPhysicalMaterial 
               targetColor={selectedMaterial.color}
               metalness={selectedMaterial.metalness}
               roughness={selectedMaterial.roughness}
+              envMapIntensity={selectedMaterial.envMapIntensity * (perfFactor < 0.6 ? (isMobile ? 0.85 : 0.9) : 1)}
+              clearcoat={selectedMaterial.clearcoat}
+              clearcoatRoughness={selectedMaterial.clearcoatRoughness}
+              ior={selectedMaterial.ior}
+              reflectivity={selectedMaterial.reflectivity}
             />
           </mesh>
         )
@@ -533,10 +623,15 @@ function RingModel({
             rotation={[node.rotation.x, node.rotation.y, node.rotation.z]}
             scale={node.scale.toArray()}
           >
-            <AnimatedStandardMaterial 
+            <AnimatedPhysicalMaterial 
               targetColor={selectedAccentMaterial.color}
               metalness={selectedAccentMaterial.metalness}
               roughness={selectedAccentMaterial.roughness}
+              envMapIntensity={selectedAccentMaterial.envMapIntensity * (perfFactor < 0.6 ? (isMobile ? 0.85 : 0.9) : 1)}
+              clearcoat={selectedAccentMaterial.clearcoat}
+              clearcoatRoughness={selectedAccentMaterial.clearcoatRoughness}
+              ior={selectedAccentMaterial.ior}
+              reflectivity={selectedAccentMaterial.reflectivity}
             />
           </mesh>
         )
@@ -551,6 +646,8 @@ function RingModel({
             position={gem.position.toArray()}
             rotation={[gem.rotation.x, gem.rotation.y, gem.rotation.z]}
             scale={gem.scale.toArray()}
+            batterySaver={batterySaver}
+            qualityTier={qualityTier}
           />
         )
       ))}
@@ -608,6 +705,8 @@ function CameraPanner({ preTestProgress, onComplete }: { preTestProgress: number
           onComplete();
         }
       }
+      // request a frame while panning
+      invalidate();
     }
   });
   return null;
@@ -667,6 +766,7 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
   const [showBandSelector, setShowBandSelector] = useState(true);
   const [hasAccentBand, setHasAccentBand] = useState(false);
   const [activeBandSelection, setActiveBandSelection] = useState<'primary' | 'accent'>('primary');
+  const [batterySaver, setBatterySaver] = useState(false);
 
   // Pre-test to measure device performance
   useEffect(() => {
@@ -720,6 +820,19 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
   })();
   
   const effectiveEnvironmentIntensity = lockedLowFps ? 1.5 : 2.2;
+  const qualityTier = (() => {
+    if (batterySaver) return 'low' as const;
+    if (initialFps !== null) {
+      if (initialFps >= 90) return 'ultra' as const;
+      if (initialFps >= 60) return 'high' as const;
+      if (initialFps >= 45) return 'medium' as const;
+      return 'low' as const;
+    }
+    // Fallback to factor while measuring
+    if (factor > 0.8) return 'high' as const;
+    if (factor > 0.5) return 'medium' as const;
+    return 'low' as const;
+  })();
 
   // Handle accent band detection
   const handleAccentBandDetected = (detected: boolean) => {
@@ -764,23 +877,25 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                 right: "10px",
                 width: "fit-content",
                 maxWidth: "250px",
-                padding: "8px",
+                padding: "10px",
                 margin: "20px"
               }
             : {
                 bottom: "20px",
                 left: "20px",
                 width: "260px",
-                padding: "20px"
+                padding: "18px"
               }
           ),
-          background: "#dcd1c7",
-          backdropFilter: "blur(10px)",
+          background: "rgba(255,255,255,0.9)",
+          border: "1px solid rgba(139,115,85,0.15)",
+          backdropFilter: "saturate(120%) blur(12px)",
           color: "#000",
           boxSizing: "border-box",
           zIndex: 10,
-          borderRadius: "12px",
-          transition: "transform 0.3s ease"
+          borderRadius: "14px",
+          boxShadow: "0 8px 24px rgba(139,115,85,0.12)",
+          transition: "transform 0.3s ease, box-shadow 0.3s ease"
         }}
       >
         {/* For non-mobile devices */}
@@ -796,13 +911,16 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
               display: "flex", 
               justifyContent: "space-between", 
               alignItems: "center", 
-              width: "100%" 
+              width: "100%",
+              gap: "8px"
             }}>
               <h2
                 style={{
                   margin: 0,
-                  fontSize: "1.3em",
-                  fontWeight: "600",
+                  fontSize: "1.05em",
+                  fontWeight: 600,
+                  color: "#4a3f35",
+                  letterSpacing: "0.03em",
                   whiteSpace: "nowrap"
                 }}
               >
@@ -811,13 +929,14 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
               <button
                 onClick={() => setShowBandSelector(!showBandSelector)}
                 style={{
-                  background: "#ab9580",
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: "50%",
-                  width: "30px",
-                  height: "30px",
-                  cursor: "pointer"
+                  background: "transparent",
+                  border: "1px solid rgba(139,115,85,0.35)",
+                  color: "#4a3f35",
+                  borderRadius: "8px",
+                  width: "32px",
+                  height: "32px",
+                  cursor: "pointer",
+                  transition: "background 0.2s ease"
                 }}
               >
                 {showBandSelector ? "▼" : "▲"}
@@ -833,29 +952,19 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                   width: "100%"
                 }}
               >
-                <div 
-                  style={{ 
-                    display: "flex", 
-                    background: "#ab9580", 
-                    borderRadius: "20px",
-                    padding: "2px",
-                    width: "100%",
-                    justifyContent: "space-between"
-                  }}
-                >
+                <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
                   <button
                     onClick={() => setActiveBandSelection('primary')}
                     style={{
                       background: activeBandSelection === 'primary' ? "#ffffff" : "transparent",
-                      color: activeBandSelection === 'primary' ? "#000000" : "#ffffff",
-                      border: "none",
-                      borderRadius: "16px",
-                      padding: "4px 10px",
+                      color: "#4a3f35",
+                      border: activeBandSelection === 'primary' ? "1px solid rgba(139,115,85,0.35)" : "1px solid transparent",
+                      borderRadius: "999px",
+                      padding: "6px 10px",
                       fontSize: "12px",
-                      fontWeight: "bold",
+                      fontWeight: 600,
                       cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      flex: 1
+                      transition: "all 0.2s ease"
                     }}
                   >
                     Primary
@@ -864,19 +973,25 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                     onClick={() => setActiveBandSelection('accent')}
                     style={{
                       background: activeBandSelection === 'accent' ? "#ffffff" : "transparent",
-                      color: activeBandSelection === 'accent' ? "#000000" : "#ffffff",
-                      border: "none",
-                      borderRadius: "16px",
-                      padding: "4px 10px",
+                      color: "#4a3f35",
+                      border: activeBandSelection === 'accent' ? "1px solid rgba(139,115,85,0.35)" : "1px solid transparent",
+                      borderRadius: "999px",
+                      padding: "6px 10px",
                       fontSize: "12px",
-                      fontWeight: "bold",
+                      fontWeight: 600,
                       cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      flex: 1
+                      transition: "all 0.2s ease"
                     }}
                   >
                     Accent
                   </button>
+                  {/* Battery saver (non-mobile hint only) */}
+                  {!isMobile && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px', fontSize: '12px', color: '#4a3f35' }}>
+                      <input type="checkbox" checked={batterySaver} onChange={(e) => setBatterySaver(e.target.checked)} />
+                      Battery saver
+                    </label>
+                  )}
                 </div>
               </div>
             )}
@@ -886,13 +1001,18 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
         {/* For mobile devices */}
         {isMobile && (
           <div style={{ width: "100%" }}>
+            {/* Mobile-only Battery Saver toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#4a3f35' }}>Battery saver</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={batterySaver} onChange={(e) => setBatterySaver(e.target.checked)} />
+              </label>
+            </div>
             {hasAccentBand && (
               <div 
                 style={{ 
-                  display: "flex", 
-                  background: "#ab9580", 
-                  borderRadius: "16px",
-                  padding: "2px",
+                  display: "flex",
+                  gap: "6px",
                   marginBottom: "8px",
                   width: "100%"
                 }}
@@ -901,15 +1021,14 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                   onClick={() => setActiveBandSelection('primary')}
                   style={{
                     background: activeBandSelection === 'primary' ? "#ffffff" : "transparent",
-                    color: activeBandSelection === 'primary' ? "#000000" : "#ffffff",
-                    border: "none",
+                    color: "#4a3f35",
+                    border: activeBandSelection === 'primary' ? "1px solid rgba(139,115,85,0.35)" : "1px solid transparent",
                     borderRadius: "14px",
                     padding: "3px 6px",
                     fontSize: "10px",
-                    fontWeight: "bold",
+                    fontWeight: 600,
                     cursor: "pointer",
                     transition: "all 0.2s ease",
-                    flex: 1
                   }}
                 >
                   Primary
@@ -918,15 +1037,14 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                   onClick={() => setActiveBandSelection('accent')}
                   style={{
                     background: activeBandSelection === 'accent' ? "#ffffff" : "transparent",
-                    color: activeBandSelection === 'accent' ? "#000000" : "#ffffff",
-                    border: "none",
+                    color: "#4a3f35",
+                    border: activeBandSelection === 'accent' ? "1px solid rgba(139,115,85,0.35)" : "1px solid transparent",
                     borderRadius: "14px",
                     padding: "3px 6px",
                     fontSize: "10px",
-                    fontWeight: "bold",
+                    fontWeight: 600,
                     cursor: "pointer",
                     transition: "all 0.2s ease",
-                    flex: 1
                   }}
                 >
                   Accent
@@ -939,7 +1057,7 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
         {/* Band color options */}
         <div
           style={{
-            maxHeight: showBandSelector ? (isMobile ? "50px" : "300px") : "0px",
+            maxHeight: showBandSelector ? (isMobile ? "60px" : "320px") : "0px",
             overflow: "hidden",
             transition: "max-height 0.3s ease",
             marginTop: isMobile ? "0" : "10px",
@@ -956,8 +1074,8 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
               style={{
                 ...(isMobile 
                   ? {
-                      width: "28px",
-                      height: "28px",
+                      width: "30px",
+                      height: "30px",
                       padding: 0,
                       margin: 0,
                       borderWidth: "1px"
@@ -967,14 +1085,14 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                       alignItems: "center",
                       justifyContent: "center",
                       width: "100%",
-                      padding: "12px 0",
+                      padding: "10px 0",
                       margin: "8px 0"
                     }
                 ),
                 background: currentSelectedColor === band.name ? band.color : "transparent",
-                color: currentSelectedColor === band.name ? "#fff" : "#000",
-                border: `2px solid ${currentSelectedColor === band.name ? darkenColor(band.color) : band.color}`,
-                borderRadius: "8px",
+                color: currentSelectedColor === band.name ? "#fff" : "#4a3f35",
+                border: `2px solid ${currentSelectedColor === band.name ? darkenColor(band.color) : "rgba(139,115,85,0.35)"}`,
+                borderRadius: "10px",
                 cursor: "pointer",
                 transition: "all 0.3s ease"
               }}
@@ -997,7 +1115,7 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
                       borderRadius: "50%",
                       background: band.color,
                       marginRight: "8px",
-                      border: "1px solid #fff"
+                      border: "1px solid rgba(255,255,255,0.8)"
                     }}
                   />
                   {band.name}
@@ -1011,15 +1129,22 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
       {/* 3D Canvas */}
       <Canvas 
         dpr={computedDpr}
+        frameloop="demand"
         camera={{ position: [22, 40, 23], fov: 50 }}
         gl={{ 
-          powerPreference: 'default',
+          powerPreference: 'high-performance',
           antialias: isIOS ? false : !lockedLowFps, // Turn off MSAA on iOS
-          precision: isSafari ? "mediump" : "highp" 
+          precision: (isSafari || isMobile) ? "mediump" : "highp",
+          alpha: false,
+          depth: true,
+          stencil: false,
+          premultipliedAlpha: false
         }}
         style={{ background: 'white' }}
         onCreated={(state) => {
-          const { gl } = state;
+          const { gl, scene } = state;
+          // Force solid white background
+          scene.background = new THREE.Color('#ffffff');
           if (isSafari) {
             const glContext = gl.getContext ? gl.getContext() : (gl as unknown as { context: WebGLRenderingContext }).context;
             if (glContext) {
@@ -1064,6 +1189,8 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
               selectedBandColor={selectedBandColor}
               selectedAccentBandColor={selectedAccentBandColor}
               onAccentBandDetected={handleAccentBandDetected}
+              batterySaver={batterySaver}
+              qualityTier={qualityTier}
             />
           </PerformanceMonitor>
         </Suspense>
@@ -1072,7 +1199,10 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
           enablePan={false} 
           minDistance={15} 
           maxDistance={50} 
-          enabled={cameraPannerComplete} 
+          enabled={cameraPannerComplete}
+          enableDamping
+          dampingFactor={0.05}
+          onChange={() => invalidate()}
         />
         
         {showStats && <Stats className="stats-bottom-right" />}
@@ -1085,19 +1215,30 @@ export default function RingViewer({ selectedModel, category }: RingViewerProps)
         )}
       </Canvas>
 
-      {/* Disclaimer text */}
+      {/* Bottom info bar */}
       <div style={{
         position: "absolute",
-        bottom: "20px",
-        width: "100%",
-        textAlign: "center",
-        pointerEvents: "none",
-        color: "#000",
-        fontSize: "1em",
-        background: "rgba(255, 255, 255, 0.7)",
-        padding: "5px 0"
+        bottom: 0,
+        left: 0,
+        right: 0,
+        display: "flex",
+        justifyContent: "center",
+        padding: "10px 0"
       }}>
-        <p>This is a render — the final ring may appear differently.</p>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          background: "rgba(255,255,255,0.9)",
+          border: "1px solid rgba(139,115,85,0.15)",
+          boxShadow: "0 8px 24px rgba(139,115,85,0.12)",
+          borderRadius: "12px",
+          padding: "8px 14px"
+        }}>
+          <span style={{ color: "#4a3f35", fontSize: "0.95em" }}>
+            This is a render — the final ring may appear differently.
+          </span>
+        </div>
       </div>
 
       <Leva hidden={!showLeva} />

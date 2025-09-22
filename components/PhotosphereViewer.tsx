@@ -323,7 +323,7 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
         nextTextureRef.current = texture;
         
         // Start transition immediately
-        let startTime = performance.now();
+        const startTime = performance.now();
         const duration = 300;
         
         function animate() {
@@ -358,7 +358,7 @@ function ImageDisplay({ images }: { images: PhotosphereViewerProps['images'] }) 
           nextTextureRef.current = loadedTexture;
           
           // Start transition after load
-          let startTime = performance.now();
+          const startTime = performance.now();
           const duration = 300;
           
           function animate() {
@@ -485,16 +485,12 @@ const PhotosphereViewer: React.FC<PhotosphereViewerProps> = ({ images, onClose }
       
       <button 
         onClick={onClose}
+        className="md-gradient-btn"
         style={{
           position: 'absolute',
           top: '20px',
           right: '20px',
-          background: 'rgba(0,0,0,0.6)',
-          color: 'white',
-          border: '1px solid white',
-          borderRadius: '4px',
-          padding: '8px 16px',
-          cursor: 'pointer',
+          padding: '10px 16px',
           zIndex: 1000
         }}
       >

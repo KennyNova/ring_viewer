@@ -79,3 +79,75 @@ html, body {
   max-width: 1200px;  /* Match the content max-width */
   width: 100%;
 }
+
+/* Elegant theme-consistent gradient button */
+.md-gradient-btn {
+  background-image: linear-gradient(135deg, #5b8fd9 0%, #3c73c8 50%, #2f5aa8 100%); /* Sapphire accent */
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(139,115,85,0.2);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.md-gradient-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(139,115,85,0.25);
+  filter: brightness(1.06);
+}
+
+.md-gradient-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 3px 8px rgba(139,115,85,0.2);
+  filter: brightness(0.98);
+}
+
+.md-gradient-chip {
+  background: linear-gradient(135deg, #f5f0eb 0%, #efe7df 100%);
+  color: #8b7355;
+  border-radius: 8px;
+  padding: 10px 16px;
+  box-shadow: 0 4px 12px rgba(139,115,85,0.1);
+}
+
+/* Reusable glassmorphism helpers */
+.md-glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(139, 115, 85, 0.15);
+  backdrop-filter: saturate(120%) blur(12px);
+  -webkit-backdrop-filter: saturate(120%) blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(139,115,85,0.12);
+}
+
+.md-glass-hover:hover {
+  box-shadow: 0 12px 28px rgba(139,115,85,0.18);
+  transform: translateY(-2px);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Remove default underlines on links while keeping theme colors */
+a, a:visited {
+  text-decoration: none;
+  color: inherit;
+}
+
+a:hover, a:active {
+  text-decoration: none;
+}
+
+/* Stronger glassmorphism panel for controls */
+.md-glass-panel {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.48) 100%
+  );
+  border: 1px solid rgba(139, 115, 85, 0.25);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(139,115,85,0.16);
+}

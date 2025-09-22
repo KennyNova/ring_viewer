@@ -33,7 +33,7 @@ const nextConfig = {
     return config;
   },
   images: {
-    domains: ['localhost'],
+    domains: ['localhost', 'masinadiamonds.com'],
   },
   async headers() {
     return [
