@@ -2,22 +2,25 @@ import 'server-only';
 import { readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
+const MODEL_EXTENSIONS = ['.glb', '.obj'];
+const baseDir = () => join(process.cwd(), 'public', '3d');
+
+const isModelFile = (file: string) => MODEL_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext));
+
+/** URL-safe identifier for a model file: its name without the extension. */
+export function modelSlug(file: string) {
+  return file.replace(/\.(glb|obj)$/i, '');
+}
+
 export function getCategories() {
-  let categorizedModels: Record<string, string[]> = {};
+  const categorizedModels: Record<string, string[]> = {};
   try {
-    const baseDir = join(process.cwd(), "public", "3d");
-    const categories = readdirSync(baseDir);
-    categories.forEach((category) => {
-      const categoryPath = join(baseDir, category);
-      if (statSync(categoryPath).isDirectory()) {
-        const files = readdirSync(categoryPath).filter((file) =>
-          file.endsWith(".glb")
-        );
-        if (files.length > 0) {
-          categorizedModels[category] = files;
-        }
-      }
-    });
+    for (const category of readdirSync(baseDir())) {
+      const categoryPath = join(baseDir(), category);
+      if (!statSync(categoryPath).isDirectory()) continue;
+      const files = readdirSync(categoryPath).filter(isModelFile);
+      if (files.length > 0) categorizedModels[category] = files;
+    }
   } catch (error) {
     console.error("Error reading models directory", error);
   }
@@ -25,32 +28,42 @@ export function getCategories() {
 }
 
 export function getCategoryModels(category: string) {
-  let models: string[] = [];
   try {
-    const categoryPath = join(process.cwd(), "public", "3d", category);
+    const categoryPath = join(baseDir(), category);
     if (statSync(categoryPath).isDirectory()) {
-      models = readdirSync(categoryPath).filter((file) => file.endsWith(".glb"));
+      return readdirSync(categoryPath).filter(isModelFile);
     }
   } catch (error) {
     console.error("Error reading models for category", category, error);
   }
-  return models;
+  return [];
 }
 
-export function checkImageExists(category: string, modelSlug: string) {
-  try {
-    const fullPath = join(process.cwd(), 'public', 'images', category, `${modelSlug}.png`);
-    return statSync(fullPath).isFile();
-  } catch {
-    return false;
-  }
+/** Resolves a slug back to the public URL of its model file, or null if missing. */
+export function findModelUrl(category: string, slug: string) {
+  const file = getCategoryModels(category).find((f) => modelSlug(f) === slug);
+  return file ? `/3d/${encodeURIComponent(category)}/${encodeURIComponent(file)}` : null;
 }
 
-export function checkGifExists(category: string, modelSlug: string) {
-  try {
-    const fullPath = join(process.cwd(), 'public', 'gifs', category, `${modelSlug}.gif`);
-    return statSync(fullPath).isFile();
-  } catch {
-    return false;
+/**
+ * Rings to suggest under a ring page: the rest of its own collection first (starting just
+ * after the current ring so neighbours vary), then the other collections interleaved.
+ */
+export function getSimilarRings(category: string, slug: string, limit = 10) {
+  const all = getCategories();
+  const own = (all[category] ?? []).map(modelSlug);
+  const index = own.indexOf(slug);
+  const sameCollection = [...own.slice(index + 1), ...own.slice(0, Math.max(index, 0))]
+    .filter((s) => s !== slug)
+    .map((s) => ({ category, slug: s }));
+
+  const others = Object.entries(all)
+    .filter(([c]) => c !== category)
+    .map(([c, files]) => files.map((f) => ({ category: c, slug: modelSlug(f) })));
+  const interleaved: { category: string; slug: string }[] = [];
+  for (let i = 0; others.some((list) => i < list.length); i++) {
+    for (const list of others) if (list[i]) interleaved.push(list[i]);
   }
-} 
+
+  return [...sameCollection, ...interleaved].slice(0, limit);
+}

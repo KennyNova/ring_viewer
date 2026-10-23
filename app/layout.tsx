@@ -1,18 +1,30 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Questrial } from "next/font/google";
 import "./globals.css";
-import { GoogleAnalytics } from '@next/third-parties/google'
-import type { Viewport } from 'next'
+import { GoogleAnalytics } from "@next/third-parties/google";
+
+const questrial = Questrial({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-questrial",
+});
 
 export const metadata: Metadata = {
-  title: "Masina Diamonds 3D Viewer",
-  description: "Interactive 3D jewelry viewer for Masina Diamonds",
+  title: "3D Ring Viewer | Masina Diamonds",
+  description: "Explore Masina Diamonds engagement rings in interactive 3D.",
+  icons: {
+    icon: "/favicon_io/favicon-32x32.png",
+    apple: "/favicon_io/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -21,8 +33,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className="min-h-screen" lang="en" style={{ fontSize: '16px' }}>
-      <body className="h-screen antialiased overflow-x-hidden">
+    <html lang="en" className={questrial.variable}>
+      <body className="min-h-screen antialiased">
         {children}
         <GoogleAnalytics gaId="G-6J91GF5STM" />
       </body>

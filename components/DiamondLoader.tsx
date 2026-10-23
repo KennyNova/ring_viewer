@@ -1,152 +1,78 @@
-import React from 'react';
-import Image from 'next/image';
+"use client";
+
+import { useEffect, useState } from 'react';
 import { useProgress } from '@react-three/drei';
 
-// Diamond loader component with filling animation
-export function DiamondLoader({ progress }: { progress: number }) {
-  // Calculate progress for each line (0-100)
-  const lineProgress = Math.min(100, progress * 100); 
-  
-  // Define all diamond part SVGs
-  const diamondParts = [
-    { src: '/diamond/top.svg', alt: 'Diamond top line' },
-    { src: '/diamond/top_left.svg', alt: 'Diamond top left line' },
-    { src: '/diamond/top_right.svg', alt: 'Diamond top right line' },
-    { src: '/diamond/middle_left.svg', alt: 'Diamond middle left line' },
-    { src: '/diamond/middle_right.svg', alt: 'Diamond middle right line' },
-    { src: '/diamond/middle_straight.svg', alt: 'Diamond middle straight line' },
-    { src: '/diamond/bottom_middle_left.svg', alt: 'Diamond bottom middle left line' },
-    { src: '/diamond/bottom_middle_right.svg', alt: 'Diamond bottom middle right line' },
-    { src: '/diamond/bottom_left.svg', alt: 'Diamond bottom left line' },
-    { src: '/diamond/bottom_right.svg', alt: 'Diamond bottom right line' }
-  ];
+// Line-art diamond whose facets draw in as progress rises
+const FACETS = [
+  'M20 20 L80 20',
+  'M20 20 L8 36',
+  'M80 20 L92 36',
+  'M8 36 L92 36',
+  'M20 20 L36 36 L50 20 L64 36 L80 20',
+  'M8 36 L50 90',
+  'M92 36 L50 90',
+  'M36 36 L50 90',
+  'M64 36 L50 90',
+];
 
-  // Calculate how many parts should be filled based on progress
-  const partsToFill = Math.ceil(lineProgress * diamondParts.length / 100);
-  
-  // Size for the container and images
-  const containerSize = 180;
-  const imageSize = 110;
-  
+export function DiamondLoader({ progress }: { progress: number }) {
   return (
-    <div className="diamond-loader" style={{
-      position: 'relative',
-      width: `${containerSize}px`,
-      height: `${containerSize}px`,
-      margin: '20px 0',
-    }}>
-      <style>
-        {`
-          @keyframes pulse {
-            0% { filter: drop-shadow(0 0 2px #0ff); }
-            50% { filter: drop-shadow(0 0 8px #0ff); }
-            100% { filter: drop-shadow(0 0 2px #0ff); }
-          }
-          
-          .diamond-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: ${imageSize}px;
-            height: ${imageSize}px;
-            animation: pulse 2s ease-in-out infinite;
-          }
-          
-          .diamond-part {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transition: opacity 0.5s ease-in-out;
-          }
-          
-          .diamond-part img {
-            filter: invert(100%) sepia(100%) saturate(300%) hue-rotate(175deg) brightness(100%) !important;
-          }
-          
-          .diamond-part-filled {
-            opacity: 1;
-          }
-          
-          .diamond-part-unfilled {
-            opacity: 0.15;
-          }
-        `}
-      </style>
-      
-      <div className="diamond-container">
-        {diamondParts.map((part, index) => {
-          // Determine if this part should be filled based on the current progress
-          const isFilled = index < partsToFill;
-          
-          // For the currently filling part, calculate partial opacity
-          let opacity = 0.15; // Default for unfilled parts
-          if (isFilled) {
-            opacity = 1; // Fully filled parts
-          } else if (index === partsToFill) {
-            // Calculate partial fill for the current part being filled
-            const partProgress = (lineProgress - (partsToFill - 1) * (100 / diamondParts.length)) / (100 / diamondParts.length);
-            opacity = 0.15 + (1 - 0.15) * partProgress;
-          }
-          
-          return (
-            <div 
-              key={part.src}
-              className={`diamond-part ${isFilled ? 'diamond-part-filled' : 'diamond-part-unfilled'}`}
-              style={{ opacity }}
-            >
-              <Image
-                src={part.src}
-                alt={part.alt}
-                width={imageSize}
-                height={imageSize}
-                style={{ objectFit: 'contain' }}
-                priority={true}
-              />
-            </div>
-          );
-        })}
+    <svg width="96" height="96" viewBox="0 0 100 100" fill="none" aria-hidden>
+      {FACETS.map((d) => (
+        <path key={`ghost-${d}`} d={d} stroke="var(--line)" strokeWidth="1.2" strokeLinejoin="round" />
+      ))}
+      {FACETS.map((d, i) => {
+        const start = i / FACETS.length;
+        const local = Math.min(1, Math.max(0, (progress - start) * FACETS.length));
+        return (
+          <path
+            key={d}
+            d={d}
+            stroke="var(--ink)"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+            pathLength={1}
+            strokeDasharray="1"
+            strokeDashoffset={1 - local}
+            style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/** Full-stage overlay that fades out once every asset reported by drei has loaded. */
+export function CombinedLoader({ ready }: { ready: boolean }) {
+  const { progress, active } = useProgress();
+  const [hidden, setHidden] = useState(false);
+  const done = ready && !active;
+
+  useEffect(() => {
+    if (!done) return setHidden(false);
+    const t = setTimeout(() => setHidden(true), 700);
+    return () => clearTimeout(t);
+  }, [done]);
+
+  if (hidden) return null;
+  const shown = done ? 100 : Math.min(progress, 99);
+
+  return (
+    <div
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center"
+      style={{
+        background: 'var(--paper)',
+        opacity: done ? 0 : 1,
+        transition: 'opacity 0.7s ease',
+        pointerEvents: done ? 'none' : 'auto',
+      }}
+    >
+      <DiamondLoader progress={shown / 100} />
+      <p className="eyebrow mt-6">Preparing your ring</p>
+      <div className="mt-4 h-px w-40" style={{ background: 'var(--line)' }}>
+        <div className="h-px" style={{ width: `${shown}%`, background: 'var(--ink)', transition: 'width 0.3s ease' }} />
       </div>
     </div>
   );
 }
-
-// Combined loader that uses DiamondLoader with progress from drei
-export function CombinedLoader({ preTestProgress }: { preTestProgress: number }) {
-  const { progress: modelProgress } = useProgress();
-  // Combine both progress values. Adjust these weights as desired.
-  const combined = 0.4 * preTestProgress + 0.6 * modelProgress;
-  if (combined >= 100) return null;
-  return (
-    <div style={{
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100vw",
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "rgba(0, 0, 0, 0.85)",
-      zIndex: 9999,
-      fontFamily: "sans-serif"
-    }}>
-      <DiamondLoader progress={combined / 100} />
-      <div style={{
-        color: "#0ff",
-        fontSize: "0.7rem",
-        letterSpacing: "2px",
-        opacity: 0.8,
-        fontWeight: 200,
-        marginTop: "15px",
-        textTransform: "uppercase",
-        fontFamily: "monospace"
-      }}>
-        {combined.toFixed(0)}%
-      </div>
-    </div>
-  );
-} 

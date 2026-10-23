@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",
-    "generate-images": "node scripts/generate-ring-images.js"
+    "thumbnails": "node scripts/generate-thumbnails.mjs"
   },
   "dependencies": {
     "@next/third-parties": "^15.1.7",

@@ -9,8 +9,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       res.status(500).json({ error: 'Error reading 3d folder' });
       return;
     }
-    const glbFiles = files.filter(file => file.endsWith('.glb'));
-    const filePaths = glbFiles.map(file => `/3d/${file}`);
+    const modelFiles = files.filter(file => {
+      const lowerFile = file.toLowerCase();
+      return lowerFile.endsWith('.glb') || lowerFile.endsWith('.obj');
+    });
+    const filePaths = modelFiles.map(file => `/3d/${file}`);
     res.status(200).json({ files: filePaths });
   });
 } 

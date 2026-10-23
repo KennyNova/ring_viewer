@@ -12,7 +12,7 @@ const nextConfig = {
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      'three': require.resolve('three'),
+      // 'three': require.resolve('three'),
     };
     
     // Handle Node.js specific modules that aren't available in the browser

@@ -1,71 +1,27 @@
-import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import RingViewer from "@/components/RingViewer";
+import SimilarRings from "@/components/SimilarRings";
+import { findModelUrl, getSimilarRings } from "@/lib/getModels";
+import { thumbnailFor } from "@/lib/thumbnails";
 
-export default function ModelViewerPage({
-  params,
-}: {
-  params: { category: string; model: string };
-}) {
-  const { category, model } = params;
+export const dynamic = "force-dynamic";
 
-  // Both category and model must be provided or show a 404.
-  if (!model || !category) {
-    notFound();
-  }
+export default function ModelViewerPage({ params }: { params: { category: string; model: string } }) {
+  const category = decodeURIComponent(params.category);
+  const model = decodeURIComponent(params.model);
+  const modelUrl = findModelUrl(category, model);
+  if (!modelUrl) notFound();
 
-  // Use the model slug as is (avoid double .glb since RingViewer handles it)
-  const selectedModel = model;
+  const similar = getSimilarRings(category, model).map((ring) => ({
+    ...ring,
+    thumbnail: thumbnailFor(ring.category, ring.slug),
+  }));
 
   return (
-    <div className="min-h-screen" style={{ position: "relative" }}>
-      <RingViewer
-        models={[selectedModel]}
-        selectedModel={selectedModel}
-        category={category}
-      />
-      <div style={{
-          position: "absolute",
-          top: "20px",
-          left: "20px",
-          zIndex: 20,
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gridTemplateRows: "auto auto",
-          gap: "10px",
-          width: "200px"
-        }}
-      >
-        <Link href="/" className="block">
-          <button className="w-full"
-            style={{
-              background: "#D4AF37",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              padding: "10px 20px",
-              cursor: "pointer"
-            }}
-          >
-            Back to Dashboard
-          </button>
-        </Link>
-        <Link href={`/${category}`} className="block">
-          <button className="w-full"
-            style={{
-              background: "#D4AF37",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              padding: "10px 20px",
-              cursor: "pointer"
-            }}
-          >
-            Back to {category}
-          </button>
-        </Link>
-      </div>
-    </div>
+    <>
+      {/* Remount per ring so state (metals, camera) resets when browsing between rings */}
+      <RingViewer key={modelUrl} modelUrl={modelUrl} modelName={model} category={category} />
+      <SimilarRings rings={similar} category={category} />
+    </>
   );
-} 
+}
