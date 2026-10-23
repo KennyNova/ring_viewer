@@ -51,9 +51,14 @@ cmd_status() {
 
 cmd_logs() { pm2_root logs "$PM2_APP" --lines 60 --nostream; }
 
+# Global, not local: the EXIT trap runs after cmd_deploy has returned
+smoke_pid=""
+cleanup() {
+  [ -n "${smoke_pid:-}" ] && kill "$smoke_pid" 2>/dev/null || true
+  rm -rf "$APP/.next-build"
+}
+
 cmd_deploy() {
-  local smoke_pid=""
-  cleanup() { [ -n "$smoke_pid" ] && kill "$smoke_pid" 2>/dev/null || true; rm -rf .next-build; }
   trap cleanup EXIT
 
   log "Updating $BRANCH"
