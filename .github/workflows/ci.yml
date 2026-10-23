@@ -25,6 +25,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+        env:
+          # puppeteer (dev dependency) is only used to render thumbnails on a PC. Its Chromium
+          # download made installs take ~5 minutes, and one run hung until the 15 minute timeout.
+          PUPPETEER_SKIP_DOWNLOAD: "1"
 
       - name: Typecheck
         run: npx tsc --noEmit
