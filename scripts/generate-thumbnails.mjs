@@ -44,28 +44,58 @@ if (jobs.length === 0) {
   process.exit(0);
 }
 
-const browser = await puppeteer.launch({
-  headless: 'new',
-  // Use the real GPU where available; SwiftShader is far slower but still works
-  args: ['--ignore-gpu-blocklist', '--enable-gpu', '--use-angle=default', '--enable-webgl'],
-});
-const page = await browser.newPage();
-await page.setViewport({ width: SIZE, height: SIZE, deviceScaleFactor: 1 });
-page.on('pageerror', (err) => console.warn('  page error:', err.message));
+// A single page that loads ~100 Draco-compressed models runs out of WebAssembly memory, after
+// which every later ring times out. So: a fresh page per ring, a fresh browser every
+// RESTART_EVERY rings, and an immediate restart plus one retry after any failure.
+const RESTART_EVERY = 20;
+const launch = () =>
+  puppeteer.launch({
+    headless: 'new',
+    // Use the real GPU where available; SwiftShader is far slower but still works
+    args: ['--ignore-gpu-blocklist', '--enable-gpu', '--use-angle=default', '--enable-webgl'],
+  });
+
+let browser = await launch();
+let sinceRestart = 0;
+const restart = async () => {
+  await browser.close().catch(() => {});
+  browser = await launch();
+  sinceRestart = 0;
+};
+
+async function render(job) {
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: SIZE, height: SIZE, deviceScaleFactor: 1 });
+    page.on('pageerror', (err) => console.warn('  page error:', err.message));
+    const url = `${BASE}/capture/${encodeURIComponent(job.category)}/${encodeURIComponent(job.slug)}?angle=${job.angle}`;
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page.waitForFunction('window.__ringReady === true', { timeout: 90000, polling: 250 });
+    mkdirSync(join(outDir, job.category), { recursive: true });
+    await page.screenshot({ path: job.output, type: 'webp', quality: 88 });
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
 
 let failed = 0;
 for (const [i, job] of jobs.entries()) {
-  const url = `${BASE}/capture/${encodeURIComponent(job.category)}/${encodeURIComponent(job.slug)}?angle=${job.angle}`;
   process.stdout.write(`[${i + 1}/${jobs.length}] ${job.category}/${job.slug} (${job.angle}) … `);
+  if (sinceRestart >= RESTART_EVERY) await restart();
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
-    await page.waitForFunction('window.__ringReady === true', { timeout: 180000, polling: 250 });
-    mkdirSync(join(outDir, job.category), { recursive: true });
-    await page.screenshot({ path: job.output, type: 'webp', quality: 88 });
+    await render(job);
+    sinceRestart++;
     console.log('done');
-  } catch (error) {
-    failed++;
-    console.log(`failed: ${error.message}`);
+  } catch (first) {
+    await restart();
+    try {
+      await render(job);
+      sinceRestart++;
+      console.log('done (after retry)');
+    } catch (error) {
+      failed++;
+      console.log(`failed: ${error.message}`);
+    }
   }
 }
 
