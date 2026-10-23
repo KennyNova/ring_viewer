@@ -53,8 +53,20 @@ cmd_logs() { pm2_root logs "$PM2_APP" --lines 60 --nostream; }
 
 # Global, not local: the EXIT trap runs after cmd_deploy has returned
 smoke_pid=""
+# The smoke server runs in its own session (setsid), so its pid is also its process-group id.
+# Killing "-$pid" takes down the runuser wrapper and the node server together. Killing only the
+# wrapper used to leave the server running on the test port, and the next deploy's smoke test
+# then passed against that stale server instead of the new build.
+stop_smoke() {
+  if [ -n "${smoke_pid:-}" ]; then
+    kill -TERM -- "-$smoke_pid" 2>/dev/null || true
+    sleep 1
+    kill -KILL -- "-$smoke_pid" 2>/dev/null || true
+    smoke_pid=""
+  fi
+}
 cleanup() {
-  [ -n "${smoke_pid:-}" ] && kill "$smoke_pid" 2>/dev/null || true
+  stop_smoke
   rm -rf "$APP/.next-build"
 }
 
@@ -84,7 +96,11 @@ cmd_deploy() {
     nice -n 10 npm run build
 
   log "Smoke-testing the new build on :$TEST_PORT"
-  as_owner env NEXT_DIST_DIR=.next-build PORT=$TEST_PORT \
+  if ss -ltn | grep -q ":$TEST_PORT "; then
+    die "port $TEST_PORT is already in use (a stale smoke server?); refusing to test against it. Live site untouched"
+  fi
+  setsid runuser -u "$OWNER" -- env PATH=/usr/local/bin:/usr/bin:/bin HOME="$OWNER_HOME" \
+    NEXT_TELEMETRY_DISABLED=1 NEXT_DIST_DIR=.next-build PORT=$TEST_PORT \
     node node_modules/next/dist/bin/next start -p "$TEST_PORT" >/tmp/ringviewer-smoke.log 2>&1 &
   smoke_pid=$!
   local ok=""
@@ -96,7 +112,8 @@ cmd_deploy() {
   # /random-ring redirects to a real ring page, which exercises the models folder too
   [ "$(http_code -L "http://127.0.0.1:$TEST_PORT/random-ring")" = "200" ] \
     || die "ring page failed in the new build; live site untouched"
-  kill "$smoke_pid" 2>/dev/null || true; smoke_pid=""
+  stop_smoke
+  ss -ltn | grep -q ":$TEST_PORT " && die "smoke server still listening on :$TEST_PORT after stop"
 
   log "Swapping the new build in and restarting"
   rm -rf .next-prev .next-failed
