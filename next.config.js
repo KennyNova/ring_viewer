@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // scripts/deploy-pi.sh builds into a separate folder while the live site keeps serving from .next
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // Either remove the assetPrefix line completely, or ensure it points to a valid domain
   // that you control and has proper CORS headers configured
   // assetPrefix: process.env.NODE_ENV === "production" ? "https://3d.masinadiamonds.com" : "",
