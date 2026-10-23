@@ -27,7 +27,9 @@ export interface RingScene {
   exposure: number;
   /** Soft ground shadow; only the showroom has a surface under the ring */
   shadowOpacity: number;
-  /** CSS background behind the canvas */
+  /** Real photograph of the place, blurred behind the canvas so the ring stays the focus */
+  photo: string;
+  /** CSS background behind the canvas; shows while the photo loads and in thumbnail captures */
   background: string;
   /** Small preview for the scene picker (full-size bokeh doesn't scale down) */
   swatch: string;
@@ -72,6 +74,7 @@ const SHOWROOM_LIGHTS: SceneLight[] = [
 export const SCENES: RingScene[] = [
   {
     id: "showroom",
+    photo: "/scenes/showroom.jpg",
     name: "Showroom",
     blurb: "Our Atlanta studio lighting",
     backdrop: { top: "#f4f2ef", horizon: "#d3cfca", bottom: "#8a8681" },
@@ -84,6 +87,7 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "window",
+    photo: "/scenes/window.jpg",
     name: "Morning Window",
     blurb: "Soft daylight by the window",
     backdrop: { top: "#eef2f6", horizon: "#cfd6dc", bottom: "#6d7075" },
@@ -111,6 +115,7 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "golden",
+    photo: "/scenes/golden.jpg",
     name: "Golden Hour",
     blurb: "Low warm sun outdoors",
     backdrop: { top: "#6f6a9a", horizon: "#f0a060", bottom: "#2a1a12" },
@@ -138,6 +143,7 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "dinner",
+    photo: "/scenes/dinner.jpg",
     name: "Candlelit Dinner",
     blurb: "Warm candles across the table",
     backdrop: { top: "#2a1d15", horizon: "#5a3d28", bottom: "#140d09" },
@@ -165,6 +171,7 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "city",
+    photo: "/scenes/city.jpg",
     name: "City Night",
     blurb: "Neon and street lights",
     backdrop: { top: "#262c46", horizon: "#343a68", bottom: "#0c0e1a" },
@@ -192,6 +199,7 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "beach",
+    photo: "/scenes/beach.jpg",
     name: "Beach Day",
     blurb: "Bright sun, sea and sand",
     backdrop: { top: "#bcd5ec", horizon: "#e8eef0", bottom: "#e6d2ad" },

@@ -165,7 +165,27 @@ export default function RingViewer({ modelUrl, modelName, category }: RingViewer
               aria-hidden
               className="pointer-events-none absolute inset-0"
               style={{ background: s.background, opacity: s.id === sceneId ? 1 : 0, transition: "opacity 0.8s ease" }}
-            />
+            >
+              {/* Scaled past the edges so the blur doesn't fade to transparent at the borders */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={s.photo}
+                alt=""
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ filter: "blur(22px) saturate(1.05)", transform: "scale(1.12)" }}
+              />
+              {/* Soft veil behind the ring: keeps it the brightest, sharpest thing on screen */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    s.tone === "dark"
+                      ? "radial-gradient(55% 55% at 50% 50%, rgba(0,0,0,0.38), rgba(0,0,0,0.1) 100%)"
+                      : "radial-gradient(55% 55% at 50% 50%, rgba(255,255,255,0.38), rgba(255,255,255,0.08) 100%)",
+                }}
+              />
+            </div>
           ))}
           {quality && !contextLost && (
             <div
@@ -311,7 +331,7 @@ export default function RingViewer({ modelUrl, modelName, category }: RingViewer
                 title={s.blurb}
                 onClick={() => selectScene(s.id)}
               >
-                <span className="scene-tile__swatch" style={{ background: s.swatch }} />
+                <span className="scene-tile__swatch" style={{ background: `url(${s.photo}) center / cover, ${s.swatch}` }} />
                 <span className="scene-tile__label">{s.name}</span>
               </button>
             ))}
