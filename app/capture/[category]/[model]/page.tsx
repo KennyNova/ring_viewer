@@ -6,13 +6,12 @@ import { CAPTURE_ANGLES } from "@/lib/thumbnails";
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
 
-export default function CapturePage({
-  params,
-  searchParams,
-}: {
-  params: { category: string; model: string };
-  searchParams: { angle?: string; metal?: string; scene?: string };
+export default async function CapturePage(props: {
+  params: Promise<{ category: string; model: string }>;
+  searchParams: Promise<{ angle?: string; metal?: string; scene?: string }>;
 }) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const modelUrl = findModelUrl(decodeURIComponent(params.category), decodeURIComponent(params.model));
   if (!modelUrl) notFound();
   const angle = CAPTURE_ANGLES.find((a) => a === searchParams.angle) ?? "hero";
