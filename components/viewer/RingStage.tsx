@@ -99,7 +99,7 @@ function DprSwitch({ controlsRef, max, min }: { controlsRef: React.MutableRefObj
   const sharp = useRef(true);
   const dragging = useRef(false);
   const lastMotion = useRef(0);
-  const clearTimer = useRef<ReturnType<typeof setTimeout>>();
+  const clearTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     const controls = controlsRef.current;

@@ -6,7 +6,8 @@ import { thumbnailFor } from "@/lib/thumbnails";
 
 export const dynamic = "force-dynamic";
 
-export default function CategoryPage({ params }: { params: { category: string } }) {
+export default async function CategoryPage(props: { params: Promise<{ category: string }> }) {
+  const params = await props.params;
   const category = decodeURIComponent(params.category);
   const models = getCategoryModels(category);
   if (models.length === 0) notFound();
