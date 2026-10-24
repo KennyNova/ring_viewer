@@ -24,6 +24,13 @@ export interface RingScene {
   /** Gradient on the surrounding sphere: overhead, horizon, below */
   backdrop: { top: string; horizon: string; bottom: string };
   lights: SceneLight[];
+  /**
+   * How much of this scene's own lighting reaches the ring, 0 to 1. The neutral studio lighting is
+   * always on underneath; the scene's backdrop, lights and exposure are blended in by this amount,
+   * so a place gives the ring a hint of its mood without turning the metal and stones into its colour.
+   * Defaults to DEFAULT_SCENE_INFLUENCE. The showroom is the base, so it ignores this.
+   */
+  influence?: number;
   exposure: number;
   /** Soft ground shadow; only the showroom has a surface under the ring */
   shadowOpacity: number;
@@ -227,3 +234,11 @@ export const SCENES: RingScene[] = [
 ];
 
 export const sceneById = (id: string) => SCENES.find((s) => s.id === id) ?? SCENES[0];
+
+/** The studio rig every scene is layered on top of. */
+export const BASE_SCENE = SCENES[0];
+
+export const DEFAULT_SCENE_INFLUENCE = 0.3;
+
+export const sceneInfluence = (scene: RingScene) =>
+  scene.id === BASE_SCENE.id ? 0 : Math.min(1, Math.max(0, scene.influence ?? DEFAULT_SCENE_INFLUENCE));

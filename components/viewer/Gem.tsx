@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type * as THREE from "three";
 import { useThree } from "@react-three/fiber";
 import type { RingPart } from "./classify";
@@ -22,19 +22,23 @@ export default function Gem({ part, quality, resolution }: GemProps) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const meshRef = useRef<THREE.Mesh>(null!);
+  const [material, setMaterial] = useState<THREE.ShaderMaterial | null>(null);
 
-  const { material, shape } = useMemo(() => {
+  // The shape map and material are created in the effect that also disposes them, not in useMemo.
+  // React Strict Mode (dev) mounts, unmounts and remounts every component; with useMemo the
+  // remount reused the render target the first unmount had just disposed, which comes back empty
+  // and left every stone looking flat grey in `npm run dev` (production was unaffected).
+  useEffect(() => {
     const shape = captureGemShape(gl, part.geometry, resolution);
-    return { shape, material: createDiamondMaterial(shape, quality) };
+    const next = createDiamondMaterial(shape, quality);
+    setMaterial(next);
+    return () => {
+      next.dispose();
+      shape.target.dispose();
+    };
   }, [gl, part.geometry, resolution, quality]);
 
-  useEffect(
-    () => () => {
-      material.dispose();
-      shape.target.dispose();
-    },
-    [material, shape]
-  );
+  if (!material) return null;
 
   return (
     <mesh

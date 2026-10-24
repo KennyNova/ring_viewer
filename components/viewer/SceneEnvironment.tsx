@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
-import type { RingScene } from "./scenes";
+import { BASE_SCENE, sceneInfluence, type RingScene } from "./scenes";
 
 /**
  * Lighting built from light panels instead of a photographed HDR, rendered once per scene into
@@ -67,14 +67,40 @@ function Exposure({ value }: { value: number }) {
   return null;
 }
 
+const mixHex = (a: string, b: string, t: number) =>
+  `#${new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString()}`;
+
+/**
+ * The neutral studio rig is always the base; the scene's own backdrop, lights and exposure are
+ * blended in by its influence. Using the scene's lighting at full strength made the places
+ * overpower the ring: golden hour turned the metal amber, the city washed it in pink and blue.
+ */
+function blendWithStudio(scene: RingScene) {
+  const k = sceneInfluence(scene);
+  const base = BASE_SCENE;
+  return {
+    backdrop: {
+      top: mixHex(base.backdrop.top, scene.backdrop.top, k),
+      horizon: mixHex(base.backdrop.horizon, scene.backdrop.horizon, k),
+      bottom: mixHex(base.backdrop.bottom, scene.backdrop.bottom, k),
+    },
+    lights: [
+      ...base.lights,
+      ...(k > 0 ? scene.lights.map((light) => ({ ...light, intensity: light.intensity * k })) : []),
+    ],
+    exposure: base.exposure + (scene.exposure - base.exposure) * k,
+  };
+}
+
 export default function SceneEnvironment({ scene }: { scene: RingScene }) {
+  const { backdrop, lights, exposure } = useMemo(() => blendWithStudio(scene), [scene]);
   return (
     <>
-      <Exposure value={scene.exposure} />
+      <Exposure value={exposure} />
       {/* Keyed so a new scene re-renders the cube map (frames={1} only renders once otherwise) */}
       <Environment key={scene.id} resolution={512} frames={1} background={false}>
-        <Backdrop backdrop={scene.backdrop} />
-        {scene.lights.map((light, i) => (
+        <Backdrop backdrop={backdrop} />
+        {lights.map((light, i) => (
           <Lightformer
             key={i}
             form={light.form}
