@@ -122,6 +122,8 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "golden",
+    // Low sun is strongly coloured; a little less keeps the gold gold rather than copper
+    influence: 0.5,
     photo: "/scenes/golden.jpg",
     name: "Golden Hour",
     blurb: "Low warm sun outdoors",
@@ -178,6 +180,8 @@ export const SCENES: RingScene[] = [
   },
   {
     id: "city",
+    // Neon is the point of this scene, and it reads as subtle at the default strength
+    influence: 0.7,
     photo: "/scenes/city.jpg",
     name: "City Night",
     blurb: "Neon and street lights",
@@ -238,7 +242,7 @@ export const sceneById = (id: string) => SCENES.find((s) => s.id === id) ?? SCEN
 /** The studio rig every scene is layered on top of. */
 export const BASE_SCENE = SCENES[0];
 
-export const DEFAULT_SCENE_INFLUENCE = 0.3;
+export const DEFAULT_SCENE_INFLUENCE = 0.55;
 
 export const sceneInfluence = (scene: RingScene) =>
   scene.id === BASE_SCENE.id ? 0 : Math.min(1, Math.max(0, scene.influence ?? DEFAULT_SCENE_INFLUENCE));
