@@ -49,7 +49,13 @@ export default function Gem({ part, quality, resolution }: GemProps) {
       scale={part.scale}
       material={material}
       onBeforeRender={(_renderer, _scene, camera) =>
-        updateDiamondUniforms(material, meshRef.current, camera, scene.environment)
+        updateDiamondUniforms(
+          material,
+          meshRef.current,
+          camera,
+          scene.environment,
+          (scene.userData.gemStudio as THREE.Scene | undefined)?.environment ?? null
+        )
       }
     />
   );

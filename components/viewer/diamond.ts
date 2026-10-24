@@ -65,17 +65,59 @@ const diamondFragment = /* glsl */ `
   uniform float uDispersion;
   uniform vec3 uColor;
   uniform mat3 uLocalToWorld;
+  uniform vec3 uLocalCamera;
+  uniform float uContrast;
+  uniform float uPivot;
+  uniform float uSceneColor;
+  uniform float uObstruction;
+  uniform float uObstructionCos;
+  uniform float uSceneLight;
+  #ifdef STUDIO_ENV
+    uniform samplerCube studioCube;
+  #endif
 
   varying vec3 vLocalPos;
   varying vec3 vLocalView;
 
+  float luma(vec3 c) {
+    return max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 1e-5);
+  }
+
+  // The light a diamond "sees" in a direction, shaped the way a real stone shows it.
   vec3 envSample(vec3 localDir) {
     vec3 dir = normalize(uLocalToWorld * localDir);
     #ifdef ENV_CUBE
-      return textureLod(envCube, dir, 0.0).rgb * uEnvIntensity;
+      vec3 c = textureLod(envCube, dir, 0.0).rgb;
     #else
-      return textureLod(envMap, equirectUv(dir), 0.0).rgb * uEnvIntensity;
+      vec3 c = textureLod(envMap, equirectUv(dir), 0.0).rgb;
     #endif
+    float lum = luma(c);
+    vec3 hue = c / lum;
+
+    // 1. A diamond's brilliance comes from its cut and the bright sources it catches, so most of
+    //    the brightness comes from a fixed studio reference and only a share from the scene.
+    //    Otherwise a darker scene turns the stone smoky and a bright one turns it to glass.
+    #ifdef STUDIO_ENV
+      lum = mix(luma(textureLod(studioCube, dir, 0.0).rgb), lum, uSceneLight);
+    #endif
+
+    // 2. The viewer's head and the camera sit between the stone and whatever light is behind
+    //    them, so light arriving from (roughly) the viewer's direction is dark. Bounced around
+    //    inside the stone, that dark patch is what draws a real diamond's dark facets and arrows;
+    //    without it the stone reads as evenly lit glass.
+    vec3 toViewer = normalize(uLocalCamera - uCenter);
+    float blocked = smoothstep(uObstructionCos - 0.07, uObstructionCos, dot(normalize(localDir), toViewer)) * uObstruction;
+    lum *= 1.0 - blocked;
+
+    // 3. Diamonds turn a few bright sources into sharp sparkle against dark facets, so expand
+    //    contrast around a pivot: light sources get brighter, soft surroundings get darker.
+    float shaped = uPivot * pow(lum / uPivot, uContrast);
+
+    // 4. A colourless stone doesn't take on the room's colour overall; coloured light shows up
+    //    in the sparkles. Pull the hue towards white so a scene tints the stone only gently.
+    hue = mix(vec3(1.0), hue, uSceneColor);
+
+    return hue * shaped * uEnvIntensity;
   }
 
   vec4 shapeAt(vec3 rel) {
@@ -225,9 +267,24 @@ export function createDiamondMaterial(shape: GemShape, quality: DiamondQuality) 
       uShape: { value: shape.target.texture },
       uCenter: { value: shape.center },
       uRadius: { value: shape.radius },
+      studioCube: { value: null },
+      // Values below were tuned by eye against renders of a round brilliant and an elongated
+      // cushion in every scene.
       uIor: { value: 2.42 },
-      uEnvIntensity: { value: 1.6 },
-      uDispersion: { value: 0.05 },
+      uEnvIntensity: { value: 1.75 },
+      // Share of the stone's brightness that follows the scene (the rest comes from the studio)
+      uSceneLight: { value: 0.3 },
+      // Share of the scene's colour that reaches the stone (mostly visible in the sparkles)
+      uSceneColor: { value: 0.4 },
+      // Diamond's red-to-blue refractive index spread is about 0.044; 0.05 on each side was
+      // roughly double that and read as rainbow glass rather than fire
+      uDispersion: { value: 0.03 },
+      // Brightness contrast around uPivot: sparkle up, soft surroundings down
+      uContrast: { value: 2.6 },
+      uPivot: { value: 1.15 },
+      // How dark the viewer's head/camera reads, and the cosine of its half-angle (0.905 ≈ 25°)
+      uObstruction: { value: 0.97 },
+      uObstructionCos: { value: 0.905 },
       uColor: { value: new THREE.Color("#ffffff") },
       uLocalCamera: { value: new THREE.Vector3() },
       uLocalToWorld: { value: new THREE.Matrix3() },
@@ -243,17 +300,22 @@ export function updateDiamondUniforms(
   material: THREE.ShaderMaterial,
   object: THREE.Object3D,
   camera: THREE.Camera,
-  envMap: THREE.Texture | null
+  envMap: THREE.Texture | null,
+  studioEnv: THREE.Texture | null = null
 ) {
   inverse.copy(object.matrixWorld).invert();
   material.uniforms.uLocalCamera.value.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(inverse);
   material.uniforms.uLocalToWorld.value.setFromMatrix4(object.matrixWorld);
   const isCube = !!(envMap as THREE.CubeTexture | null)?.isCubeTexture;
-  if (isCube !== "ENV_CUBE" in material.defines) {
+  const hasStudio = !!(studioEnv as THREE.CubeTexture | null)?.isCubeTexture;
+  if (isCube !== "ENV_CUBE" in material.defines || hasStudio !== "STUDIO_ENV" in material.defines) {
     if (isCube) material.defines.ENV_CUBE = "";
     else delete material.defines.ENV_CUBE;
+    if (hasStudio) material.defines.STUDIO_ENV = "";
+    else delete material.defines.STUDIO_ENV;
     material.needsUpdate = true;
   }
   material.uniforms.envMap.value = isCube ? null : envMap;
   material.uniforms.envCube.value = isCube ? envMap : null;
+  material.uniforms.studioCube.value = hasStudio ? studioEnv : null;
 }

@@ -92,11 +92,45 @@ function blendWithStudio(scene: RingScene) {
   };
 }
 
+/**
+ * A second, fixed studio-lit environment just for the diamonds. Their brilliance should come from
+ * the cut and the light sources they catch, not swing with how bright or tinted a scene is, so the
+ * diamond shader takes most of its brightness from this and only a share from the scene.
+ * Rendered once into its own scene and published on the main scene for Gem to pick up.
+ */
+function GemStudioEnvironment() {
+  const mainScene = useThree((s) => s.scene);
+  const studioScene = useMemo(() => new THREE.Scene(), []);
+  useEffect(() => {
+    mainScene.userData.gemStudio = studioScene;
+    return () => {
+      if (mainScene.userData.gemStudio === studioScene) delete mainScene.userData.gemStudio;
+    };
+  }, [mainScene, studioScene]);
+
+  return (
+    <Environment scene={studioScene} resolution={256} frames={1} background={false}>
+      <Backdrop backdrop={BASE_SCENE.backdrop} />
+      {BASE_SCENE.lights.map((light, i) => (
+        <Lightformer
+          key={i}
+          form={light.form}
+          color={light.color ?? "#ffffff"}
+          intensity={light.intensity}
+          scale={light.scale}
+          position={light.position}
+        />
+      ))}
+    </Environment>
+  );
+}
+
 export default function SceneEnvironment({ scene }: { scene: RingScene }) {
   const { backdrop, lights, exposure } = useMemo(() => blendWithStudio(scene), [scene]);
   return (
     <>
       <Exposure value={exposure} />
+      <GemStudioEnvironment />
       {/* Keyed so a new scene re-renders the cube map (frames={1} only renders once otherwise) */}
       <Environment key={scene.id} resolution={512} frames={1} background={false}>
         <Backdrop backdrop={backdrop} />
