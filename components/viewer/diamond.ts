@@ -8,35 +8,17 @@ import * as THREE from "three";
  * WebGL backend that shader either fails silently or trips the GPU watchdog and
  * loses the context, which is why gems rendered black/blank on iPhone.
  *
- * This material uses the classic "distance cube map" technique instead:
- * once per gem we render the stone's own surface (normal + distance from its
- * centre) into a small RGBA8 cube map, then the fragment shader traces internal
- * reflections against that map with a handful of fixed-count loops. Only core
- * WebGL2 features are used: no float render targets, no integer textures, no
- * dynamic arrays.
+ * Every diamond cut (round, princess, cushion, emerald, oval, pear, marquise...) is a convex
+ * solid bounded by flat facets. So instead of a general ray tracer we extract each stone's facet
+ * planes once, store them in a small float texture, and the fragment shader finds where light
+ * leaves the stone exactly: inside a convex solid, the exit is the nearest plane the ray is
+ * heading towards. That is exact for any shape and gives crisp facets. (An earlier version
+ * approximated the stone with a "distance from centre" cube map, which made every cut reflect
+ * like a round brilliant and produced speckle noise.) Only core WebGL2 is used: float textures
+ * read with texelFetch, and loops with a compile-time bound.
  */
 
 export type DiamondQuality = "high" | "low";
-
-const captureVertex = /* glsl */ `
-  uniform vec3 uCenter;
-  varying vec3 vRel;
-  void main() {
-    vRel = position - uCenter;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const captureFragment = /* glsl */ `
-  uniform float uRadius;
-  varying vec3 vRel;
-  void main() {
-    // Flat facet normal, forced to point away from the gem's centre
-    vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
-    if (dot(n, vRel) < 0.0) n = -n;
-    gl_FragColor = vec4(n * 0.5 + 0.5, clamp(length(vRel) / uRadius, 0.0, 1.0));
-  }
-`;
 
 const diamondVertex = /* glsl */ `
   uniform vec3 uLocalCamera;
@@ -57,7 +39,12 @@ const diamondFragment = /* glsl */ `
   #else
     uniform sampler2D envMap;
   #endif
-  uniform samplerCube uShape;
+  #ifdef STUDIO_ENV
+    uniform samplerCube studioCube;
+  #endif
+  // One texel per facet plane: xyz = outward normal, w = distance from the stone's centre
+  uniform highp sampler2D uPlanes;
+  uniform int uPlaneCount;
   uniform vec3 uCenter;
   uniform float uRadius;
   uniform float uIor;
@@ -69,12 +56,9 @@ const diamondFragment = /* glsl */ `
   uniform float uContrast;
   uniform float uPivot;
   uniform float uSceneColor;
+  uniform float uSceneLight;
   uniform float uObstruction;
   uniform float uObstructionCos;
-  uniform float uSceneLight;
-  #ifdef STUDIO_ENV
-    uniform samplerCube studioCube;
-  #endif
 
   varying vec3 vLocalPos;
   varying vec3 vLocalView;
@@ -120,23 +104,25 @@ const diamondFragment = /* glsl */ `
     return hue * shaped * uEnvIntensity;
   }
 
-  vec4 shapeAt(vec3 rel) {
-    vec4 s = texture(uShape, rel);
-    return vec4(normalize(s.xyz * 2.0 - 1.0), s.w * uRadius);
-  }
-
-  // Distance along d from p (relative to centre) to the gem's inner surface.
-  // Fixed-point iteration against the distance cube map, convex shapes converge fast.
-  float traceExit(vec3 p, vec3 d) {
-    float b = dot(p, d);
-    float c0 = dot(p, p);
-    float r = shapeAt(d).w;
-    float t = -b + sqrt(max(b * b - c0 + r * r, 0.0));
-    for (int i = 0; i < TRACE_STEPS; i++) {
-      r = shapeAt(p + d * t).w;
-      t = -b + sqrt(max(b * b - c0 + r * r, 0.0));
+  // Where a ray starting inside the stone at p (relative to the centre) heading along d leaves
+  // it, and the outward normal of the facet it leaves through. Inside a convex solid that is the
+  // nearest of the planes the ray is moving towards.
+  float exitFacet(vec3 p, vec3 d, out vec3 normal) {
+    float tMin = 1e20;
+    normal = d;
+    for (int i = 0; i < MAX_PLANES; i++) {
+      if (i >= uPlaneCount) break;
+      vec4 plane = texelFetch(uPlanes, ivec2(i, 0), 0);
+      float approach = dot(plane.xyz, d);
+      if (approach > 1e-6) {
+        float t = (plane.w - dot(plane.xyz, p)) / approach;
+        if (t < tMin) {
+          tMin = t;
+          normal = plane.xyz;
+        }
+      }
     }
-    return t;
+    return max(tMin, 0.0);
   }
 
   float schlick(float cosTheta, float f0) {
@@ -155,9 +141,9 @@ const diamondFragment = /* glsl */ `
     vec3 light = vec3(0.0);
     float carry = 1.0;
     for (int i = 0; i < BOUNCES; i++) {
-      float t = traceExit(p, d);
+      vec3 n;
+      float t = exitFacet(p, d, n);
       vec3 hit = p + d * t;
-      vec3 n = shapeAt(hit).xyz;
       vec3 outDir = refract(d, -n, ior);
       if (dot(outDir, outDir) > 0.0) {
         float fr = exitFresnel(dot(d, n), ior, f0);
@@ -165,7 +151,8 @@ const diamondFragment = /* glsl */ `
         carry *= fr;
       }
       d = reflect(d, -n);
-      p = hit + d * (uRadius * 0.002);
+      // Step back inside so the next search doesn't immediately hit the same facet
+      p = hit + d * (uRadius * 1e-4);
     }
     // Whatever is still bouncing around escapes along its last direction
     return light + carry * envSample(d);
@@ -199,57 +186,113 @@ const diamondFragment = /* glsl */ `
 `;
 
 export interface GemShape {
-  target: THREE.WebGLCubeRenderTarget;
+  /** One RGBA float texel per facet plane: outward normal and distance from the centre */
+  planes: THREE.DataTexture;
+  planeCount: number;
   center: THREE.Vector3;
   radius: number;
 }
 
-/** Renders a gem's own surface into a cube map seen from its centre. */
-export function captureGemShape(
-  renderer: THREE.WebGLRenderer,
-  geometry: THREE.BufferGeometry,
-  resolution: number
-): GemShape {
-  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
-  const box = new THREE.Box3().setFromBufferAttribute(geometry.attributes.position as THREE.BufferAttribute);
+/**
+ * Every facet is checked at every internal bounce, so the count drives per-pixel cost. Real cuts
+ * have roughly 57–150 facets; curved outlines (cushion, oval, pear) arrive as hundreds of thin
+ * slivers that differ by fractions of a degree, so those get merged more loosely until under this.
+ */
+const MAX_FACETS = 160;
+
+interface Facet {
+  n: THREE.Vector3; // area-weighted sum of normals
+  d: number; // area-weighted sum of offsets
+  weight: number; // total area
+}
+
+/** Merges triangle planes whose normals and offsets agree within the given tolerances. */
+function mergeFacets(triangles: { n: THREE.Vector3; d: number; area: number }[], angleDeg: number, offset: number) {
+  const sameNormal = Math.cos(THREE.MathUtils.degToRad(angleDeg));
+  const facets: (Facet & { unit: THREE.Vector3 })[] = [];
+  for (const tri of triangles) {
+    const match = facets.find((f) => f.unit.dot(tri.n) > sameNormal && Math.abs(f.d / f.weight - tri.d) < offset);
+    if (match) {
+      match.n.addScaledVector(tri.n, tri.area);
+      match.d += tri.d * tri.area;
+      match.weight += tri.area;
+      match.unit.copy(match.n).normalize();
+    } else {
+      facets.push({ n: tri.n.clone().multiplyScalar(tri.area), d: tri.d * tri.area, weight: tri.area, unit: tri.n.clone() });
+    }
+  }
+  return facets;
+}
+
+/**
+ * Extracts a stone's facet planes from its mesh. Each triangle gives a plane (normal oriented
+ * away from the centre); coplanar triangles, which make up one facet, are merged.
+ */
+export function buildGemShape(geometry: THREE.BufferGeometry): GemShape {
+  const pos = geometry.attributes.position as THREE.BufferAttribute;
+  const box = new THREE.Box3().setFromBufferAttribute(pos);
   const center = box.getCenter(new THREE.Vector3());
   let radius = 0;
-  const pos = geometry.attributes.position;
-  const tmp = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    radius = Math.max(radius, tmp.fromBufferAttribute(pos, i).distanceTo(center));
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) radius = Math.max(radius, v.fromBufferAttribute(pos, i).distanceTo(center));
+  radius = radius || 1;
+
+  const index = geometry.index;
+  const triangleCount = index ? index.count / 3 : pos.count / 3;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const edge = new THREE.Vector3();
+  const centroid = new THREE.Vector3();
+
+  const triangles: { n: THREE.Vector3; d: number; area: number }[] = [];
+  for (let t = 0; t < triangleCount; t++) {
+    const i0 = index ? index.getX(t * 3) : t * 3;
+    const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+    const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+    a.fromBufferAttribute(pos, i0).sub(center);
+    b.fromBufferAttribute(pos, i1).sub(center);
+    c.fromBufferAttribute(pos, i2).sub(center);
+    const n = new THREE.Vector3().subVectors(c, b).cross(edge.subVectors(a, b));
+    const area = n.length();
+    if (area < 1e-12) continue;
+    n.divideScalar(area);
+    centroid.copy(a).add(b).add(c).divideScalar(3);
+    if (n.dot(centroid) < 0) n.negate();
+    const d = n.dot(centroid);
+    if (d <= 0) continue; // degenerate or through the centre: not a bounding facet
+    triangles.push({ n, d, area });
   }
-  radius = radius * 1.01 || 1;
+  // Big triangles first, so each facet is seeded by its dominant plane rather than a sliver
+  triangles.sort((x, y) => y.area - x.area);
 
-  const target = new THREE.WebGLCubeRenderTarget(resolution, {
-    type: THREE.UnsignedByteType,
-    format: THREE.RGBAFormat,
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-    generateMipmaps: false,
-    depthBuffer: true,
+  let angle = 0.75;
+  let facets = mergeFacets(triangles, angle, radius * 0.003);
+  while (facets.length > MAX_FACETS && angle < 8) {
+    angle *= 1.5;
+    facets = mergeFacets(triangles, angle, radius * 0.003 * (angle / 0.75));
+  }
+
+  const planeCount = Math.max(1, facets.length);
+  const data = new Float32Array(planeCount * 4);
+  facets.forEach((f, i) => {
+    const n = f.n.normalize();
+    data.set([n.x, n.y, n.z, f.d / f.weight], i * 4);
   });
-  target.texture.colorSpace = THREE.NoColorSpace;
+  const planes = new THREE.DataTexture(data, planeCount, 1, THREE.RGBAFormat, THREE.FloatType);
+  planes.minFilter = THREE.NearestFilter;
+  planes.magFilter = THREE.NearestFilter;
+  planes.generateMipmaps = false;
+  planes.needsUpdate = true;
 
-  const material = new THREE.ShaderMaterial({
-    vertexShader: captureVertex,
-    fragmentShader: captureFragment,
-    uniforms: { uCenter: { value: center }, uRadius: { value: radius } },
-    side: THREE.DoubleSide,
-  });
-  const scene = new THREE.Scene();
-  scene.add(new THREE.Mesh(geometry, material));
-  const camera = new THREE.CubeCamera(radius * 0.001, radius * 4, target);
-  camera.position.copy(center);
+  return { planes, planeCount, center, radius };
+}
 
-  const prevClear = renderer.getClearColor(new THREE.Color());
-  const prevAlpha = renderer.getClearAlpha();
-  renderer.setClearColor(0x808080, 1);
-  camera.update(renderer, scene);
-  renderer.setClearColor(prevClear, prevAlpha);
-  material.dispose();
-
-  return { target, center, radius };
+/** Loop bound for the shader, rounded up so stones with similar facet counts share a program. */
+function maxPlanesFor(count: number) {
+  let bound = 32;
+  while (bound < count) bound *= 2;
+  return bound;
 }
 
 export function createDiamondMaterial(shape: GemShape, quality: DiamondQuality) {
@@ -258,16 +301,17 @@ export function createDiamondMaterial(shape: GemShape, quality: DiamondQuality) 
     fragmentShader: diamondFragment,
     defines: {
       BOUNCES: quality === "high" ? 5 : 3,
-      TRACE_STEPS: quality === "high" ? 4 : 3,
+      MAX_PLANES: maxPlanesFor(shape.planeCount),
       ...(quality === "high" ? { DISPERSION: "" } : {}),
     },
     uniforms: {
       envMap: { value: null },
       envCube: { value: null },
-      uShape: { value: shape.target.texture },
+      studioCube: { value: null },
+      uPlanes: { value: shape.planes },
+      uPlaneCount: { value: shape.planeCount },
       uCenter: { value: shape.center },
       uRadius: { value: shape.radius },
-      studioCube: { value: null },
       // Values below were tuned by eye against renders of a round brilliant and an elongated
       // cushion in every scene.
       uIor: { value: 2.42 },

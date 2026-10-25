@@ -56,14 +56,6 @@ function MetalParts({ parts, metal }: { parts: RingPart[]; metal: string }) {
 function ClassifiedModel({ ring, primaryMetal, accentMetal, quality, onAnalyzed }: Omit<RingModelProps, "url"> & { ring: ClassifiedRing }) {
   const groupRef = useRef<THREE.Group>(null!);
 
-  // Centre stones get a sharp cube map; pavé/melee stones are tiny on screen.
-  const largestGem = Math.max(0, ...ring.gems.map((g) => g.radius));
-  const resolutionFor = (gem: RingPart) => {
-    const isFeature = gem.radius > largestGem * 0.45;
-    if (quality === "high") return isFeature ? 256 : 64;
-    return isFeature ? 128 : 32;
-  };
-
   useEffect(() => {
     groupRef.current.updateWorldMatrix(true, true);
     onAnalyzed?.({
@@ -78,7 +70,7 @@ function ClassifiedModel({ ring, primaryMetal, accentMetal, quality, onAnalyzed 
       <MetalParts parts={ring.primaryMetal} metal={primaryMetal} />
       <MetalParts parts={ring.accentMetal} metal={accentMetal} />
       {ring.gems.map((gem) => (
-        <Gem key={gem.key} part={gem} quality={quality} resolution={resolutionFor(gem)} />
+        <Gem key={gem.key} part={gem} quality={quality} />
       ))}
     </group>
   );
